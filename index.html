@@ -1,0 +1,669 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<title>PHPLS 示範教學評分</title>
+<style>
+:root{
+  --red:#990011; --red-d:#6d000c; --cream:#FCF6F5; --gold:#C89211;
+  --ink:#2a1a1c; --mute:#7a6668; --line:#ead9d6; --card:#fff;
+  --ok:#1f7a4d; --warn:#b86e00; --bad:#b3122a;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--cream);color:var(--ink);font:16px/1.55 -apple-system,BlinkMacSystemFont,"PingFang TC","Noto Sans TC","Microsoft JhengHei",sans-serif;-webkit-text-size-adjust:100%}
+header{background:var(--red);color:#fff;padding:10px 16px;display:flex;align-items:center;gap:10px;position:sticky;top:0;z-index:5}
+header h1{font-size:17px;margin:0;flex:1;letter-spacing:.5px}
+header .kick{color:var(--gold);font-weight:700;font-size:12px;display:block;letter-spacing:1px}
+header button{background:transparent;border:1px solid rgba(255,255,255,.5);color:#fff;border-radius:8px;padding:6px 10px;font-size:14px}
+nav{display:flex;background:#fff;border-bottom:1px solid var(--line)}
+nav button{flex:1;border:0;background:none;padding:10px 4px;font-size:15px;color:var(--mute);border-bottom:3px solid transparent}
+nav button.on{color:var(--red);border-color:var(--red);font-weight:700}
+main{max-width:760px;margin:0 auto;padding:12px 16px 80px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:12px}
+.kicker{color:var(--gold);font-weight:700;font-size:12px;letter-spacing:1px;margin-bottom:4px}
+label.f{display:block;font-size:13px;color:var(--mute);margin:8px 0 3px}
+select,input[type=text],input[type=password],textarea{width:100%;font:inherit;padding:9px 10px;border:1px solid var(--line);border-radius:10px;background:#fff;color:var(--ink)}
+textarea{min-height:70px}
+.row{display:flex;gap:8px}.row>*{flex:1;min-width:0}
+.hint{font-size:13px;color:var(--mute)}
+.btn{font:inherit;border:0;border-radius:10px;padding:10px 14px;background:var(--red);color:#fff;font-weight:600}
+.btn.sec{background:#fff;color:var(--red);border:1px solid var(--red)}
+.btn.gold{background:var(--gold)}
+.btn:disabled{opacity:.45}
+.hidden{display:none!important}
+/* recorder */
+.rec{text-align:center}
+#timer{font:700 64px/1 ui-monospace,"SF Mono",Menlo,monospace;letter-spacing:2px;margin:6px 0 4px;color:var(--mute)}
+#timer.z1{color:var(--warn)}#timer.z2{color:var(--ok)}#timer.z3{color:var(--warn)}#timer.z4{color:var(--bad)}
+#zoneText{font-size:14px;min-height:21px;color:var(--mute)}
+.bar{height:10px;border-radius:5px;background:linear-gradient(90deg,#ddd 0 78.6%,#f1d9a8 78.6% 85.7%,#bfe3cf 85.7% 100%);position:relative;margin:10px 0 4px;overflow:visible}
+.bar i{position:absolute;top:-4px;width:3px;height:18px;background:var(--red);border-radius:2px;left:0}
+.bar b{position:absolute;top:13px;font-size:11px;color:var(--mute);transform:translateX(-50%);font-weight:400}
+#level{height:6px;background:#eee;border-radius:3px;overflow:hidden;margin:14px auto 0;max-width:260px}
+#level i{display:block;height:100%;width:0;background:var(--ok);transition:width .08s}
+#recBtn{width:120px;height:120px;border-radius:50%;border:6px solid #f3d6d9;background:var(--red);color:#fff;font-size:20px;font-weight:700;margin:14px auto 4px;display:block}
+#recBtn.on{background:#fff;color:var(--red);border-color:var(--red);animation:pulse 1.4s infinite}
+@keyframes pulse{50%{box-shadow:0 0 0 12px rgba(153,0,17,.12)}}
+.flash{animation:flash .6s 3}@keyframes flash{50%{background:#ffe9a8}}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.chip{border:1px solid var(--line);background:#fff;border-radius:999px;padding:7px 11px;font-size:14px;color:var(--ink)}
+.chip.neg{border-color:#f0c4ca;color:var(--bad)}
+.chip:active{background:#fbe7ea}
+#markLog{font-size:13px;color:var(--mute);margin-top:6px}
+.tx{font-size:14px;max-height:260px;overflow:auto;background:#fffdfc;border:1px solid var(--line);border-radius:10px;padding:8px 10px}
+.tx p{margin:0 0 6px}.tx .t{color:var(--gold);font-weight:700;font-family:ui-monospace,Menlo,monospace;margin-right:6px;cursor:pointer}
+.tx .m{color:var(--red)}
+.pending{color:var(--mute);font-style:italic}
+/* result */
+.score-grid{display:grid;grid-template-columns:1fr;gap:8px}
+.item{border:1px solid var(--line);border-radius:12px;padding:10px}
+.item h4{margin:0 0 4px;font-size:15px;display:flex;align-items:center;gap:8px}
+.item h4>span:first-child{flex:1}
+.seg{display:inline-flex;border:1px solid var(--red);border-radius:9px;overflow:hidden}
+.seg button{border:0;background:#fff;color:var(--red);width:38px;height:34px;font-weight:700;font-size:16px}
+.seg button.on{background:var(--red);color:#fff}
+.item .why{font-size:14px;margin:4px 0 0}
+.ev{font-size:13px;color:var(--mute);margin:4px 0 0;padding-left:0;list-style:none}
+.ev li{margin-top:2px}.ev .t{color:var(--gold);font-weight:700;font-family:ui-monospace,Menlo,monospace;cursor:pointer}
+.ai{font-size:12px;color:var(--mute)}
+.total{display:flex;align-items:baseline;gap:10px;justify-content:center;margin:6px 0}
+.total b{font-size:44px;color:var(--red)}
+.fb h5{margin:10px 0 2px;font-size:14px;color:var(--red)}
+.fb ul{margin:0;padding-left:20px;font-size:15px}
+.issue{background:#fff3f4;border-left:4px solid var(--bad);padding:6px 10px;border-radius:6px;margin:6px 0;font-size:14px}
+.pearl{background:#fbf6e8;border-left:4px solid var(--gold);padding:6px 10px;border-radius:6px;margin:6px 0;font-size:14px}
+.steps{font-size:14px;color:var(--mute)}
+.steps div{margin:3px 0}.steps .done{color:var(--ok)}.steps .run{color:var(--red);font-weight:600}
+table{width:100%;border-collapse:collapse;font-size:14px}
+th,td{border-bottom:1px solid var(--line);padding:6px 4px;text-align:left;vertical-align:top}
+th{color:var(--mute);font-weight:600;font-size:12px}
+td.n{text-align:center;font-family:ui-monospace,Menlo,monospace}
+.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--ink);color:#fff;padding:9px 16px;border-radius:10px;font-size:14px;z-index:20;opacity:0;transition:opacity .2s;pointer-events:none}
+.toast.on{opacity:.95}
+audio{width:100%;margin-top:8px}
+.pill{display:inline-block;font-size:12px;border-radius:999px;padding:1px 8px;background:#f6e9e7;color:var(--red-d);margin-left:4px}
+</style>
+</head>
+<body>
+<header>
+  <h1><span class="kick">PHPLS INSTRUCTOR ・ 北區場</span>示範教學 AI 評分</h1>
+  <button id="setBtn">設定</button>
+</header>
+<nav>
+  <button data-tab="rec" class="on">錄音評分</button>
+  <button data-tab="hist">本站紀錄</button>
+</nav>
+<main>
+
+<!-- ============ 錄音評分 ============ -->
+<section id="tab-rec">
+  <div class="card" id="setupCard">
+    <div class="kicker">受評資訊</div>
+    <label class="f">站別</label>
+    <select id="station"></select>
+    <div class="row">
+      <div><label class="f" id="partLabel">抽到段別</label><select id="part"></select></div>
+      <div><label class="f">學員</label><select id="student"></select></div>
+    </div>
+    <div id="keyWarn" class="hint hidden" style="color:var(--bad);margin-top:8px">尚未設定 OpenAI API key → 按右上「設定」</div>
+  </div>
+
+  <div class="card rec">
+    <div id="timer">0:00</div>
+    <div id="zoneText">按下開始＝碼表起點（7 分鐘示範）</div>
+    <div class="bar"><i id="barPin"></i><b style="left:78.6%;transform:translateX(-100%)">5:30</b><b style="left:85.7%;transform:none">6:00</b><b style="left:100%;transform:translateX(-100%)">7:00</b></div>
+    <button id="recBtn">開始</button>
+    <div id="level"><i></i></div>
+    <div class="hint" id="recHint" style="margin-top:8px">手機請放在講者附近、螢幕保持開啟</div>
+  </div>
+
+  <div class="card" id="markCard">
+    <div class="kicker">現場觀察（錄音看不到的，點一下就記時間）</div>
+    <div class="chips" id="chips"></div>
+    <div class="row" style="margin-top:8px"><input type="text" id="noteIn" placeholder="自由備註，按 Enter 記錄"></div>
+    <div id="markLog"></div>
+  </div>
+
+  <div class="card">
+    <div class="kicker">即時逐字稿（每 30 秒一段）</div>
+    <div class="tx" id="liveTx"><p class="pending">開始錄音後，每 30 秒會出現一段逐字稿</p></div>
+    <div class="row" style="margin-top:8px">
+      <label class="btn sec" style="text-align:center;flex:1">上傳音檔評分<input type="file" id="fileIn" accept="audio/*,video/*" class="hidden"></label>
+    </div>
+  </div>
+
+  <div class="card hidden" id="progCard">
+    <div class="kicker">產生評分中</div>
+    <div class="steps" id="steps"></div>
+  </div>
+
+  <div id="result" class="hidden"></div>
+</section>
+
+<!-- ============ 紀錄 ============ -->
+<section id="tab-hist" class="hidden">
+  <div class="card">
+    <div class="kicker">已儲存的評分</div>
+    <div class="row" style="margin-bottom:8px">
+      <select id="histFilter"></select>
+    </div>
+    <div style="overflow-x:auto"><table id="histTable"></table></div>
+    <div class="row" style="margin-top:10px">
+      <button class="btn sec" id="csvBtn">匯出 CSV</button>
+      <button class="btn sec" id="copyAllBtn">複製本站全部</button>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 設定 ============ -->
+<section id="tab-set" class="hidden">
+  <div class="card">
+    <div class="kicker">OpenAI API</div>
+    <label class="f">API key（只存在這台裝置的瀏覽器）</label>
+    <input type="password" id="apiKey" placeholder="sk-..." autocomplete="off">
+    <div class="row">
+      <div><label class="f">轉錄模型</label><input type="text" id="mTx"></div>
+      <div><label class="f">評分模型</label><input type="text" id="mScore"></div>
+    </div>
+    <label class="f">評分者</label><input type="text" id="rater" placeholder="例：林自強">
+    <label class="f" style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="beep"> 6:00／7:00／7:30 發出提示音（預設只震動＋閃爍）</label>
+  </div>
+  <div class="card">
+    <div class="kicker">學員名單</div>
+    <div class="hint">一行一位：「編號 姓名」，例如 <code>C6 黃晏博</code>。名單只存在本機。</div>
+    <textarea id="rosterIn" style="min-height:160px"></textarea>
+  </div>
+  <div class="row"><button class="btn" id="saveSet">儲存設定</button><button class="btn sec" id="closeSet">返回</button></div>
+</section>
+</main>
+<div class="toast" id="toast"></div>
+
+<script>
+/* ================= 課程資料（115 北區場評分單、示範教學準備說明） ================= */
+const RUBRIC = `① 內容正確性：3＝在時間內仍可補充教材外的相關實務知識或技巧；2＝正確；1＝不正確
+② 學員互動：3＝互動熱烈且願意給予其他學員回饋；2＝有互動，程度普通；無建樹的回饋（只說「很棒」而無具體內容）；1＝無互動
+③ 教學方法與技巧：3＝在時間內善用 4D 教學、全動操作或其他優異教學方法；2＝中規中矩；1＝運用不佳，如操作課程僅上 PPT
+④ 口語、儀態與器材：3＝口齒清晰、台風穩健、善用器材；2＝能清楚表達；1＝過於小聲或講課時學員難以分辨表達內容
+⑤ 時間控制：3＝6:00–7:00；2＝7:00–7:30 或 5:30–6:00；1＝>7:30（強制下台）或 <5:30`;
+
+const FLOW = {
+  lecture:`大堂授課：同組 5 人把同一堂課拆成 5 段接力（抽籤決定段別），以公告 PPT 為主、可自行增加補充教材。每人 7 分鐘，結束前 1 分鐘提示，之後 2 分鐘回饋講評。教學一律採互動式；段與段要銜接得上。`,
+  skill:`技術站：每人 7 分鐘，建議節奏 0:00–1:00 Describe（這段做什麼、為什麼重要、品質指標，一句話講完學習目標）→ 1:00–3:00 Demo（邊做邊講關鍵步驟，放慢、關鍵動作停一拍）→ 3:00–5:15 Do（讓 1–2 位學員實際操作，錯了當下修正）→ 5:15–6:30 Debrief（先請操作者自評，再補充，最後一句帶得走的重點）。不建議投影片/影片；技術課只放 PPT 會被判定「教學法運用不佳」。可請同組一位學員擔任助教。`,
+  scenario:`情境站：評的是「怎麼帶一個 case」，不是會不會急救。建議節奏 0:00–0:30 設定（一句話交代情境、環境、角色分派）→ 0:30–3:30 推進（給生命徵象與現場線索，讓學員實際處置；需要時暫停引導再繼續）→ 3:30–5:30 Debrief（先問學員感受與觀察 → 分析為什麼 → 收斂成原則，不是逐項糾錯）→ 5:30–6:30 收尾（回到 Critical error 與 2–3 個 key point，講出帶得走的結論）。6–7 分鐘只夠帶 2–3 個重點；情境要合情合理（年齡、體重、生命徵象、到院時間互相對得上）；指導員自己講超過一半時間就失分。`
+};
+const PLUS_MINUS = `看得到的好：開場 30 秒內講清楚學習目標；示範放慢、關鍵處停一拍、講「為什麼」；真的讓學員動手、錯誤當場修正；時間內補得上教材外的實務經驗（這是內容 3 分的門檻）；回饋具體且對事；藥物與能量一律依體重當場計算；收在 6–7 分鐘。
+常見扣分：從頭講到尾，沒有 Demo、沒有 Do；操作課只上 PPT；示範太久 debrief 被吃掉；回饋只說「很棒」；套用成人劑量或成人做法；情境數值與年齡兜不起來；器材沒先確認、上台才找東西。
+參考教材順序（內容衝突時依此為準）：2025 AHA 兒童急救指引（PBLS、PALS、NRP）＞ 高級救護技術員教科書（第三版）＞ PALS 和 APLS 精華（第三版）。`;
+
+const STATIONS = [
+ {id:'L1',kind:'lecture',name:'大堂授課　小兒基本救命術心跳停止與團隊急救',room:'4A019',groups:['A1-5','A6-10'],parts:[
+  ['① 導論與辨識','學習目標；新生兒/嬰兒/兒童年齡定義與 NRP、PBLS、PALS 適用範圍；2025 兒童生命之鏈；台美小兒 OHCA 概況；「安—叫—查—(叫)—CABD」；喚嬰兒拍腳底或擦背，不再「看聽感覺」；同時檢查脈搏與呼吸 ≤10 秒，脈搏 <60 且灌流不良就壓胸。'],
+  ['② 高品質 CPR 與通氣','用力壓、快快壓、胸回彈、勿中斷；嬰兒約 4 cm、兒童約 5 cm；插管前單人 30:2、雙人 15:2，插管後每 2–3 秒一口氣；嬰兒已不建議兩指按壓法；壓額抬顎、3 歲以下墊肩成嗅吸姿勢；BVM EC 手法；胸部無起伏時 MR. SOPA。'],
+  ['③ AED 與異物哽塞','小兒貼片三種位置；AED「開—貼—插—電」與電擊後立即壓胸；輕微哽塞鼓勵咳嗽；嚴重哽塞意識清楚時嬰兒拍背推胸、兒童拍背推腹；意識不清改壓胸 30 次，吹氣前目視有異物才掃除，不盲挖。'],
+  ['④ 心律辨識與去顫','可電擊（VF、pVT）與不可電擊（PEA、asystole）；PEA 最常見原因低血容；PALS 心跳停止流程；2 J/kg → 4 J/kg → ≥4 J/kg（最高 10 J/kg 或成人劑量），介於刻度取高；兒童優先手動去顫器，準備電擊時不停 CPR。'],
+  ['⑤ 給藥、可逆原因與 TRM','PEA/asystole 儘早 epinephrine，VF/pVT 第二次電擊後給；0.01 mg/kg（1 mg/mL 稀釋成 0.1 mg/mL 即 0.1 mL/kg），每次最多 1 mg、每 3–5 分鐘；amiodarone 5 mg/kg 第三次電擊後、最多 3 劑；院前 BVM 優先於 SGA/ETT；6H5T；TRM 閉環溝通與角色分派。']]},
+ {id:'L2',kind:'lecture',name:'大堂授課　到院前小兒非創傷緊急救護流程',room:'4A019',groups:['B1-5','B6-10'],parts:[
+  ['① 流程總覽與 PAT','流程骨架「ABC（小兒三角）→ 抓死人（OHCA）→ ABCDE」、T1/T2 與 TP 版本差異；PAT 外觀（肌張力、互動、眼神、哭聲）、呼吸作功、皮膚循環，接觸病童前 60 秒內、不用儀器完成；CRT 測手掌或腳底，不看指甲床。'],
+  ['② 抓死人：OHCA 分支與 AED 小兒模式','無脈搏就 CPR、脈搏 <60 先正壓通氣再看、≥60 走 ABCDE；真/快/假 OHCA；CPR 深度與壓吹比；ZOLL X、ZOLL AED 3、AED PRO、Philips FR3 切小兒模式（起始 50 J）。'],
+  ['③ 初評 A 與 B','兩歲以上墊枕部三軸對齊、嬰兒不需墊高；口咽呼吸道用壓舌板沿曲線直接插入，不做反向旋轉；i-gel 尺寸；2025 異物哽塞更新（一歲以上 5 背擊＋5 腹推）；面罩位置；潮氣量 6–8 mL/kg；哮吼 IH epinephrine、氣喘 MDI/Combivent。'],
+  ['④ 初評 C：循環與注射','CRT/SBP/心律與 Rate-Volume-Pump，HR<60 正壓通氣、必要時 CPR；過敏不穩定 IM epinephrine 0.01 mg/kg（最多 0.3 mg，必要時每 5–10 分鐘重複）；IV 號數；IM 3 歲以下股外側肌、3 歲以上三角肌；90 度進針。'],
+  ['⑤ 初評 D、E 與體重估算','AVPU、瞳孔、肌張力、血糖；50 rule 與 D10W/D25W/D50W（嬰兒 <45、其餘 <60 mg/dL）；癲癇重積 midazolam（13–40 kg 5 mg、>40 kg 10 mg）；熱痙攣 Voren 塞劑 >6 kg 半顆、>12 kg 一顆；TEN-4；體重估算（父母、Best Guess、APLS、Broselow）。']]},
+ {id:'L3',kind:'lecture',name:'大堂授課　到院前小兒創傷緊急救護流程',room:'立君書房',mine:true,groups:['C1-5','C6-10'],parts:[
+  ['① 小孩不是縮小的大人','年齡別死因與事故傷害；受傷機轉對應傷害型態；Size/Skeleton/Surface area/Psychological/Long-term 五特殊性；各年齡正常生理數值。'],
+  ['② 評估架構：PAT 到 IMIST','PAT →（脈搏、呼吸）→ XABCDE → SAMPLE → 輔助檢查 → 危急度 → 後送與次級評估 → IMIST 交班；PAT 六種組合對應病因；小兒外傷休克分級；X 壓住傷口、A 頸圈、B 針刺減壓與貼三邊、C SBP 70＋年齡×2 與 20 水-20 水-10 血、D 50 rule 與囟門、E 露身與燙傷面積。'],
+  ['③ X、A、B','總血量 70–80 mL/kg（嬰兒 80、1–3 歲 75、3 歲以上 70）；多數出血可直接加壓，止血帶在幼童的證據；頭大舌大、嬰兒以鼻呼吸；3 歲以下凹頭長背板或背肩墊 2–3 cm；口咽呼吸道沿曲線插入；<20 kg SGA 注意會厭折疊；針刺減壓針具。'],
+  ['④ C、D、E 與二度評估','等張晶體 20 mL/kg 可重複 1–2 次，反應不佳考慮 pRBC 10 mL/kg；骨針時機；囟門與顱縫、4 歲以下 GCS 語言項改觀察行為、低血糖；暴露後立刻保暖；父母主訴價值；燒燙傷用 Lund-Browder 或病童手掌 1%，<30 kg 需含糖點滴。'],
+  ['⑤ 兒虐與疏忽','非意外傷害死亡率為意外的 6 倍，2 歲以下特別警覺；衛福部身體虐待簡易篩檢表六條（1–4 任兩項、或第 5 項、或第 6 項即懷疑並通報）；TEN-4 瘀傷法則；完整記錄、傳達接手醫院、保存密錄器。']]},
+ {id:'L4',kind:'lecture',name:'大堂授課　到院前新生兒緊急救護流程',room:'立君書房',mine:true,groups:['D1-5','D6-10'],parts:[
+  ['① 到場前後與流程總覽','到場先問產婦週數、胎數、羊水、高危因素；「孕婦轉送優於新生兒轉送」；教科書第三版 NRP 流程圖與 2025 美國版對照、分岔點。'],
+  ['② 常規初步處置','保溫與體溫 36.5–37.5°C；擺位；抽吸先口再鼻；Grunting 與 Gasping 都不算有效呼吸；血氧量右上肢（導管前）。'],
+  ['③ 正壓通氣','「壓—放—放」節奏，成功只看胸部起伏；速率 30–60 次/分、起始充氣 0.5–1 秒；PPV 15 秒後評估；先給 5 次正壓，有起伏持續 30 秒，無起伏才進入矯正（MR. SOPA）。'],
+  ['④ 心率評估與胸部按壓','心率以聽診為主，血氧與心電圖為輔助；2025 不建議兩指法，改雙手環抱；按壓通氣 3:1；三導心電圖確認心率；Apgar 1、5 分鐘，<7 每 5 分鐘再評至 ≥7 或 20 分鐘。'],
+  ['⑤ 院前的限制與實務問題','院前做不到的：CPAP/PEEP、插管、臍靜脈導管、IV epinephrine；低血容與氣胸難判斷；夾臍時間、是否剪臍帶、en-caul birth、同車或另派車、何時用 NRP 何時用 PALS；足月約 3 kg、生命徵象正常值（HR 100–180、RR 30–60、SBP>60）。']]},
+ {id:'S1',kind:'skill',name:'技術站　小兒高品質 CPR 與異物哽塞處置',room:'立君書房',groups:['A1-5','D6-10','C1-5','B6-10'],parts:[
+  ['① 嬰兒 CPR','雙拇指環抱法（2025 不建議兩指法）、手的位置、深度與回彈、30:2、即時回饋裝置讀值怎麼用來教。'],
+  ['② 兒童單人／雙人 CPR','單手或雙手按壓、雙人 15:2、換手時機與 2 分鐘節律。'],
+  ['③ 團隊高品質 CPR','pit-crew 站位、計時與提示、按壓分率與中斷管控、CPR coach 具體台詞。'],
+  ['④ 嬰兒異物哽塞','有效與無效咳嗽辨識、5 次背擊＋5 次胸推、失去意識後處置轉換。'],
+  ['⑤ 兒童異物哽塞','腹部推擠（2025：一歲以上 5 背擊＋5 腹推）、失去意識後開始 CPR、每次通氣前檢視口腔、不盲目手指掃除。']]},
+ {id:'S2',kind:'skill',name:'技術站　小兒呼吸處置（SGA／BVM／MDI／吸入治療）',room:'心靈分享室',groups:['B1-5','A6-10','D1-5','C6-10'],parts:[
+  ['① 呼吸道開放與抽吸','擺位（幼兒肩下墊高）、口咽/鼻咽呼吸道尺寸與置入、抽吸壓力與時間。'],
+  ['② BVM 通氣','面罩尺寸、單人 E-C 與雙人手法、有效通氣看胸廓起伏、避免過度通氣與胃脹氣。'],
+  ['③ 聲門上呼吸道（SGA）','依體重選號、置入與確認、固定、置入後通氣速率與監測。'],
+  ['④ 氧氣輸送裝置','鼻導管、簡單面罩、非再呼吸面罩、blow-by 的適用與流量；小孩抗拒時怎麼給。'],
+  ['⑤ 吸入型藥物','MDI＋spacer＋面罩、噴霧治療組裝與流量、依體重劑量與給藥後再評估。']]},
+ {id:'S3',kind:'skill',name:'技術站　小兒骨針置入（IO）',room:'4A001',mine:true,groups:['C1-5','B6-10','A1-5','D6-10'],parts:[
+  ['完整技術（依自訂病人設定）','適應症與禁忌 → 部位（僅近端脛骨）與體表定位（幾橫指、摸到什麼骨性標記）→ 選針 → 消毒 → 置入與深度判斷 → 確認（穩固、可回抽、沖洗無腫脹）→ 固定 → 給藥與加壓輸液 → 併發症與監測。以不同病人設定（如 8 個月 OHCA、5 歲創傷失血）區隔教學重點。']]},
+ {id:'S4',kind:'skill',name:'技術站　小兒特殊給藥技術（IM／Supp）',room:'4A019',groups:['D1-5','C6-10','B1-5','A6-10'],parts:[
+  ['完整技術（依自訂病人設定）','IM：部位（幼兒股外側肌、較大兒童三角肌）、針具與單一部位體積上限、依體重換算、手法、注射後觀察與再給藥時機。塞劑：適應症、擺位與深度、劑量、對家屬說明與隱私、給藥後固定與觀察。共同必教：三讀五對、體重來源、過敏史、劑量當場計算——絕不套成人劑量。以不同藥物情境區隔（anaphylaxis 腎上腺素、抽搐用藥、發燒處置）。']]},
+ {id:'C1',kind:'scenario',name:'情境站　小兒 OHCA（含 TRM）',room:'4A001',groups:['A6-10','D1-5','C6-10','B1-5'],parts:[['① 小兒疑心肌炎進展至 OHCA',''],['② 嬰兒溺水 OHCA（不可電擊心律）','']]},
+ {id:'C2',kind:'scenario',name:'情境站　小兒非創傷',room:'心靈分享室',groups:['B6-10','A1-5','D6-10','C1-5'],parts:[['① 急性氣喘發作',''],['② 蜂螫過敏性休克',''],['③ 兒虐顱內出血致心搏過緩',''],['④ 癲癇重積','']]},
+ {id:'C3',kind:'scenario',name:'情境站　小兒創傷',room:'4A019',mine:true,groups:['C6-10','B1-5','A6-10','D1-5'],parts:[['① 外傷初評 XABCDE（BLS）',''],['② 小兒多重創傷（ALS）',''],['③ 兒虐 TBI','']]},
+ {id:'C4',kind:'scenario',name:'情境站　新生兒救護',room:'立君書房',groups:['D6-10','C1-5','B6-10','A1-5'],parts:[['① 產前評估與院前急產準備',''],['② 急產新生兒不哭：正壓通氣與 MR. SOPA','']]},
+];
+
+const CHIPS = [
+  ['🎯 講學習目標',0],['👐 示範 Demo',0],['🙋 學員動手 Do',0],['✅ 當場修正',0],['🗣 請學員自評/回饋',0],
+  ['⏸ 暫停引導',0],['🧸 善用器材/教具',0],['💡 教材外實務',0],['📽 只放投影片',1],['🔈 聲音小/不清',1],
+  ['🧰 找器材/不熟',1],['📖 照念稿',1],['❌ 疑似內容錯誤',1]
+];
+
+/* ================= 狀態與儲存 ================= */
+const $ = s => document.querySelector(s);
+const LS = {
+  get(k,d){try{const v=localStorage.getItem('phpls_'+k);return v==null?d:JSON.parse(v)}catch(e){return d}},
+  set(k,v){try{localStorage.setItem('phpls_'+k,JSON.stringify(v))}catch(e){toast('本機儲存失敗：'+e.message)}}
+};
+let cfg = Object.assign({key:'',mTx:'gpt-4o-transcribe',mScore:'gpt-5.4',rater:'',beep:false}, LS.get('cfg',{}));
+let roster = LS.get('roster',{});
+let records = LS.get('records',[]);
+
+// 名單可由網址 #roster=<base64url JSON> 帶入（片段不會送到伺服器），讀完即從網址移除
+(function(){
+  const m = location.hash.match(/roster=([^&]+)/);
+  if(m){try{
+    const b=m[1].replace(/-/g,'+').replace(/_/g,'/');
+    const json=decodeURIComponent(escape(atob(b)));
+    roster=Object.assign(roster,JSON.parse(json)); LS.set('roster',roster);
+    setTimeout(()=>toast('已匯入 '+Object.keys(roster).length+' 位學員名單'),300);
+  }catch(e){console.warn(e)}
+  history.replaceState(null,'',location.pathname);}
+})();
+
+function toast(msg,ms=2200){const t=$('#toast');t.textContent=msg;t.classList.add('on');clearTimeout(t._h);t._h=setTimeout(()=>t.classList.remove('on'),ms)}
+const fmt = s => {s=Math.max(0,Math.round(s));return Math.floor(s/60)+':'+String(s%60).padStart(2,'0')};
+const esc = s => String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+function timeScore(sec){ if(sec>=360&&sec<=420) return 3; if((sec>420&&sec<=450)||(sec>=330&&sec<360)) return 2; return 1; }
+function expandGroup(g){const [L,r]=[g[0],g.slice(1)];const [a,b]=r.split('-').map(Number);const o=[];for(let i=a;i<=b;i++)o.push(L+i);return o}
+
+/* ================= UI：站別／學員 ================= */
+function fillStations(){
+  const sel=$('#station'); sel.innerHTML='';
+  STATIONS.forEach(s=>{const o=document.createElement('option');o.value=s.id;o.textContent=(s.mine?'★ ':'')+s.name.replace('　','｜');sel.appendChild(o)});
+  sel.value = LS.get('station','L3'); if(!sel.value) sel.value='L3';
+  onStation();
+}
+function curStation(){return STATIONS.find(s=>s.id===$('#station').value)}
+function onStation(){
+  const s=curStation(); LS.set('station',s.id);
+  $('#partLabel').textContent = s.kind==='scenario'?'抽到教案':(s.kind==='lecture'?'抽到段別':'子題');
+  $('#part').innerHTML = s.parts.map((p,i)=>`<option value="${i}">${esc(p[0])}</option>`).join('');
+  const done = new Set(records.filter(r=>r.station===s.id).map(r=>r.sid));
+  $('#student').innerHTML = s.groups.flatMap(expandGroup).map(id=>`<option value="${id}">${done.has(id)?'✓ ':''}${id} ${esc(roster[id]||'')}</option>`).join('');
+  const next = s.groups.flatMap(expandGroup).find(id=>!done.has(id)); if(next) $('#student').value=next;
+  renderHist();
+}
+$('#station').onchange=onStation;
+$('#keyWarn').classList.toggle('hidden',!!cfg.key);
+
+/* tabs */
+function showTab(t){
+  ['rec','hist','set'].forEach(x=>$('#tab-'+x).classList.toggle('hidden',x!==t));
+  document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on',b.dataset.tab===t));
+  if(t==='hist') renderHist();
+}
+document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>showTab(b.dataset.tab));
+$('#setBtn').onclick=()=>{
+  $('#apiKey').value=cfg.key;$('#mTx').value=cfg.mTx;$('#mScore').value=cfg.mScore;$('#rater').value=cfg.rater;$('#beep').checked=cfg.beep;
+  $('#rosterIn').value=Object.entries(roster).map(([k,v])=>k+' '+v).join('\n');
+  showTab('set');
+};
+$('#closeSet').onclick=()=>showTab('rec');
+$('#saveSet').onclick=()=>{
+  cfg={key:$('#apiKey').value.trim(),mTx:$('#mTx').value.trim()||'gpt-4o-transcribe',mScore:$('#mScore').value.trim()||'gpt-5.4',rater:$('#rater').value.trim(),beep:$('#beep').checked};
+  LS.set('cfg',cfg);
+  roster={}; $('#rosterIn').value.split('\n').forEach(l=>{const m=l.trim().match(/^([A-Da-d])-?0*(\d{1,2})[\s,，、\t]+(.+)$/);if(m)roster[m[1].toUpperCase()+m[2]]=m[3].trim()});
+  LS.set('roster',roster); $('#keyWarn').classList.toggle('hidden',!!cfg.key);
+  onStation(); showTab('rec'); toast('已儲存');
+};
+
+/* ================= 錄音（PCM → 30 秒 WAV 分段，邊錄邊轉錄） ================= */
+const SR=16000, CHUNK=30;
+let S=null; // session
+
+function newSession(){
+  const st=curStation(), pi=+$('#part').value, sid=$('#student').value;
+  return {id:Date.now(), station:st.id, part:pi, sid, name:roster[sid]||'', chunks:[], marks:[], pcm:[], cur:[], curLen:0, total:0, t0:0, dur:0, alerts:{}};
+}
+function wavBlob(f32s,len){
+  const buf=new ArrayBuffer(44+len*2), v=new DataView(buf);
+  const w=(o,s)=>{for(let i=0;i<s.length;i++)v.setUint8(o+i,s.charCodeAt(i))};
+  w(0,'RIFF');v.setUint32(4,36+len*2,true);w(8,'WAVE');w(12,'fmt ');v.setUint32(16,16,true);v.setUint16(20,1,true);v.setUint16(22,1,true);
+  v.setUint32(24,SR,true);v.setUint32(28,SR*2,true);v.setUint16(32,2,true);v.setUint16(34,16,true);w(36,'data');v.setUint32(40,len*2,true);
+  let o=44; for(const a of f32s){for(let i=0;i<a.length;i++){const s=Math.max(-1,Math.min(1,a[i]));v.setInt16(o,s<0?s*0x8000:s*0x7fff,true);o+=2}}
+  return new Blob([buf],{type:'audio/wav'});
+}
+let ac,stream,proc,wakeLock,tick,resampPos=0;
+function downsample(input,inRate){
+  if(inRate===SR) return new Float32Array(input);
+  const ratio=inRate/SR, out=[]; let pos=resampPos;
+  while(pos<input.length){const i0=Math.floor(pos),i1=Math.min(input.length-1,Math.floor(pos+ratio));let s=0,n=0;for(let i=i0;i<=i1;i++){s+=input[i];n++}out.push(s/n);pos+=ratio}
+  resampPos=pos-input.length; return Float32Array.from(out);
+}
+function pushPCM(a){
+  S.pcm.push(a); S.cur.push(a); S.curLen+=a.length; S.total+=a.length;
+  if(S.curLen>=SR*CHUNK) flushChunk();
+}
+function flushChunk(final){
+  if(!S.curLen) return;
+  if(final && S.curLen<SR*0.8){S.cur=[];S.curLen=0;return}
+  const idx=S.chunks.length, start=(S.total-S.curLen)/SR;
+  const ch={idx,start,end:S.total/SR,text:null,err:null,blob:wavBlob(S.cur,S.curLen),prev:S.chunks[idx-1]||null};
+  S.chunks.push(ch); S.cur=[]; S.curLen=0;
+  ch.p=transcribeChunk(ch); renderTx();
+}
+
+async function startRec(){
+  if(!cfg.key){toast('請先到「設定」貼上 OpenAI API key');return}
+  try{
+    stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false,noiseSuppression:true,autoGainControl:true,channelCount:1}});
+  }catch(e){toast('無法使用麥克風：'+e.message,4000);return}
+  S=newSession(); resampPos=0;
+  ac=new (window.AudioContext||window.webkitAudioContext)();
+  if(ac.state==='suspended') await ac.resume();
+  const src=ac.createMediaStreamSource(stream);
+  proc=ac.createScriptProcessor(4096,1,1);
+  const mute=ac.createGain(); mute.gain.value=0;
+  src.connect(proc); proc.connect(mute); mute.connect(ac.destination);
+  proc.onaudioprocess=e=>{
+    if(!S||!S.t0) return;
+    const d=e.inputBuffer.getChannelData(0); let pk=0; for(let i=0;i<d.length;i+=16){const x=Math.abs(d[i]);if(x>pk)pk=x}
+    $('#level i').style.width=Math.min(100,pk*180)+'%';
+    pushPCM(downsample(d,ac.sampleRate));
+  };
+  try{wakeLock=await navigator.wakeLock?.request('screen')}catch(e){}
+  S.t0=performance.now();
+  $('#recBtn').textContent='停止'; $('#recBtn').classList.add('on');
+  $('#result').classList.add('hidden'); $('#progCard').classList.add('hidden');
+  ['#station','#part','#student','#fileIn'].forEach(s=>$(s).disabled=true);
+  $('#markLog').textContent=''; renderTx();
+  tick=setInterval(updateTimer,200);
+}
+function updateTimer(){
+  if(!S||!S.t0) return;
+  const t=(performance.now()-S.t0)/1000; S.dur=t;
+  const el=$('#timer'); el.textContent=fmt(t);
+  let z=0,txt='Describe／設定階段';
+  if(t>=330&&t<360){z=1;txt='5:30 過了——再撐一下到 6:00'} else if(t>=360&&t<=420){z=2;txt='✅ 滿分區間 6:00–7:00'}
+  else if(t>420&&t<=450){z=3;txt='⚠️ 超過 7:00（得 2 分）'} else if(t>450){z=4;txt='⛔ 超過 7:30 → 強制下台'}
+  else if(t<330) txt = t<60?'Describe／設定':'進行中（<5:30 結束只得 1 分）';
+  el.className='z'+z; $('#zoneText').textContent=txt;
+  $('#barPin').style.left=Math.min(100,t/420*100)+'%';
+  for(const [sec,msg] of [[360,'6:00：剩 1 分鐘，請給提示'],[420,'7:00'],[450,'7:30 強制下台']]){
+    if(t>=sec&&!S.alerts[sec]){S.alerts[sec]=1;alertCue(msg)}
+  }
+}
+function alertCue(msg){
+  toast(msg,3500); navigator.vibrate?.([200,100,200]);
+  document.querySelector('.rec').classList.remove('flash'); void document.querySelector('.rec').offsetWidth; document.querySelector('.rec').classList.add('flash');
+  if(cfg.beep&&ac){const o=ac.createOscillator(),g=ac.createGain();o.frequency.value=880;g.gain.value=.2;o.connect(g);g.connect(ac.destination);o.start();o.stop(ac.currentTime+.25)}
+}
+async function stopRec(){
+  clearInterval(tick);
+  S.dur=(performance.now()-S.t0)/1000; updateTimer();
+  proc.onaudioprocess=null; try{proc.disconnect()}catch(e){}
+  stream.getTracks().forEach(t=>t.stop()); try{await ac.close()}catch(e){}
+  try{wakeLock&&await wakeLock.release()}catch(e){}
+  flushChunk(true); S.t0=0;
+  $('#recBtn').textContent='開始';$('#recBtn').classList.remove('on');$('#level i').style.width='0';
+  ['#station','#part','#student','#fileIn'].forEach(s=>$(s).disabled=false);
+  runScoring();
+}
+$('#recBtn').onclick=()=>{ if(S&&S.t0) stopRec(); else startRec(); };
+window.addEventListener('beforeunload',e=>{if(S&&S.t0){e.preventDefault();e.returnValue=''}});
+
+/* 觀察標記 */
+$('#chips').innerHTML=CHIPS.map(([t,neg],i)=>`<button class="chip${neg?' neg':''}" data-i="${i}">${t}</button>`).join('');
+$('#chips').onclick=e=>{const b=e.target.closest('.chip');if(!b)return;addMark(CHIPS[b.dataset.i][0])};
+$('#noteIn').onkeydown=e=>{if(e.key==='Enter'&&e.target.value.trim()){addMark('📝 '+e.target.value.trim());e.target.value=''}};
+function addMark(label){
+  if(!S){S=newSession()}
+  const t=S.t0?(performance.now()-S.t0)/1000:(S.dur||0);
+  S.marks.push({t,label}); navigator.vibrate?.(30);
+  $('#markLog').innerHTML=S.marks.map(m=>`<span class="pill">${fmt(m.t)} ${esc(m.label)}</span>`).join(' ');
+  renderTx();
+}
+
+/* ================= 轉錄 ================= */
+const GLOSSARY='繁體中文。到院前小兒救命術 PHPLS 指導員示範教學。詞彙：PAT、小兒評估三角、XABCDE、骨針 IO、脛骨近端、脛骨粗隆、腔室症候群、外滲、胸肋凹、鼻翼搧動、囟門、會厭、CPR、AED、BVM、E-C 手法、SGA、i-gel、IO 骨針、IM、塞劑、MDI、spacer、epinephrine、amiodarone、midazolam、Voren、TRM、MR. SOPA、NRP、PALS、PBLS、Broselow、TEN-4、IMIST、ISBAR、Debrief、4D 教學、壓吹比 15:2、30:2、J/kg、mg/kg、mL/kg、安妮。';
+async function transcribeChunk(ch){
+  for(let attempt=0;attempt<3;attempt++){
+    try{
+      const prev=ch.prev?.text||'';
+      const fd=new FormData();
+      fd.append('file',ch.blob,`seg${ch.idx}.wav`); fd.append('model',cfg.mTx); fd.append('language','zh');
+      fd.append('response_format','json'); fd.append('prompt',(GLOSSARY+' '+prev.slice(-120)).slice(0,600));
+      const r=await fetch('https://api.openai.com/v1/audio/transcriptions',{method:'POST',headers:{Authorization:'Bearer '+cfg.key},body:fd});
+      const j=await r.json(); if(!r.ok) throw new Error(j.error?.message||r.status);
+      ch.text=(j.text||'').trim(); ch.err=null; renderTx(); return ch.text;
+    }catch(e){ch.err=e.message; renderTx(); await new Promise(r=>setTimeout(r,1200*(attempt+1)))}
+  }
+  ch.text=''; return '';
+}
+function transcriptLines(sess){
+  const items=[];
+  sess.chunks.forEach(c=>items.push({t:c.start,html:c.text==null?`<span class="pending">${c.err?'重試中…':'轉錄中…'}</span>`:esc(c.text||'（無語音）'),txt:c.text||''}));
+  sess.marks.forEach(m=>items.push({t:m.t,mark:1,html:`<span class="m">【評分者標記】${esc(m.label)}</span>`,txt:'【評分者現場標記】'+m.label}));
+  return items.sort((a,b)=>a.t-b.t||(a.mark?1:-1));
+}
+function renderTx(){
+  if(!S) return;
+  const items=transcriptLines(S);
+  const box=$('#liveTx');
+  box.innerHTML=items.length?items.map(i=>`<p><span class="t" data-t="${i.t}">${fmt(i.t)}</span>${i.html}</p>`).join(''):'<p class="pending">錄音中，第一段逐字稿將於 0:30 出現…</p>';
+  box.scrollTop=box.scrollHeight;
+}
+
+/* ================= 上傳音檔：解碼後切 30 秒同一條管線 ================= */
+$('#fileIn').onchange=async e=>{
+  const f=e.target.files[0]; e.target.value=''; if(!f) return;
+  if(!cfg.key){toast('請先設定 API key');return}
+  toast('解碼音檔中…');
+  try{
+    const arr=await f.arrayBuffer();
+    const tmp=new (window.AudioContext||window.webkitAudioContext)();
+    const ab=await tmp.decodeAudioData(arr); tmp.close();
+    const off=new OfflineAudioContext(1,Math.ceil(ab.duration*SR),SR);
+    const src=off.createBufferSource(); src.buffer=ab; src.connect(off.destination); src.start();
+    const rendered=await off.startRendering(); const d=rendered.getChannelData(0);
+    S=newSession(); $('#result').classList.add('hidden');
+    for(let i=0;i<d.length;i+=SR*CHUNK){pushPCM(d.slice(i,Math.min(d.length,i+SR*CHUNK)))}
+    flushChunk(true); S.dur=d.length/SR; $('#timer').textContent=fmt(S.dur); renderTx();
+    runScoring();
+  }catch(err){toast('無法解碼此音檔：'+err.message,4000)}
+};
+
+/* ================= 評分 ================= */
+const SCHEMA={type:'object',additionalProperties:false,required:['items','content_issues','practical_pearls','phases','teacher_talk_share','feedback','caveat'],properties:{
+  items:{type:'array',minItems:4,maxItems:4,items:{type:'object',additionalProperties:false,required:['key','score','phrase','reason','evidence'],properties:{
+    key:{type:'string',enum:['content','interaction','method','delivery']},
+    score:{type:'integer',enum:[1,2,3]},
+    phrase:{type:'string',description:'評語短句，12–22 字，寫在評分單上的那種顆粒度'},
+    reason:{type:'string',description:'為什麼是這個分數，1–2 句，要對照評分標準'},
+    evidence:{type:'array',maxItems:3,items:{type:'object',additionalProperties:false,required:['t','quote'],properties:{t:{type:'string'},quote:{type:'string'}}}}
+  }}},
+  content_issues:{type:'array',maxItems:5,items:{type:'object',additionalProperties:false,required:['t','said','correct','severity'],properties:{t:{type:'string'},said:{type:'string'},correct:{type:'string'},severity:{type:'string',enum:['錯誤','不精確','可能是轉錄誤差']}}}},
+  practical_pearls:{type:'array',maxItems:4,items:{type:'string'}},
+  phases:{type:'array',maxItems:6,items:{type:'object',additionalProperties:false,required:['name','from','to'],properties:{name:{type:'string'},from:{type:'string'},to:{type:'string'}}}},
+  teacher_talk_share:{type:'string',description:'示範者講話占比的估計與依據，一句'},
+  feedback:{type:'object',additionalProperties:false,required:['strengths','improve','takeaway','debrief_question'],properties:{
+    strengths:{type:'array',maxItems:3,items:{type:'string'}},
+    improve:{type:'array',maxItems:3,items:{type:'string'}},
+    takeaway:{type:'string'},debrief_question:{type:'string'}}},
+  caveat:{type:'string',description:'音檔看不到或不確定、需要評分者自己確認的地方，一句'}
+}};
+const KEYS=[['content','① 內容正確性','內容'],['interaction','② 學員互動','互動'],['method','③ 教學方法與技巧','方法'],['delivery','④ 口語、儀態與器材','口語']];
+
+function buildPrompt(sess){
+  const st=STATIONS.find(s=>s.id===sess.station), p=st.parts[sess.part];
+  const ts=timeScore(sess.dur);
+  const lines=transcriptLines(sess).map(i=>`[${fmt(i.t)}] ${i.txt}`).join('\n');
+  const sys=`你是台灣急診醫學會暨台灣緊急救護醫療指導醫師學會 PHPLS 聯合工作小組的資深評分指導醫師，正在評「PHPLS 指導員課程」學員的 7 分鐘示範教學。你手上只有錄音逐字稿（每 30 秒一段、時間戳是該段起點、自動語音轉錄可能有錯字）與評分者的現場標記。
+
+評分標準（每項 1–3 分，建議起始分 2 分，滿分 15）：
+${RUBRIC}
+
+評分原則：
+- ⑤ 時間控制由碼表決定，已算好，不用你評。你評 ①–④。
+- 從 2 分出發。給 3 分要有逐字稿或現場標記的具體證據；給 1 分也要有具體證據（① 給 1 分必須引用到真的錯的內容，排除轉錄錯字的可能）。
+- ① 內容：對照本段的教材重點與 2025 AHA；3 分門檻是「時間內補充教材外的實務知識或技巧」（例如現場經驗、常見錯誤、器材眉角）。
+- ② 互動：看有沒有提問、點學員回答、讓學員上來做、請學員互評；只問「懂嗎？」「有沒有問題？」不算真互動。
+- ③ 方法：技術站看 4D（Describe→Demo→Do→Debrief）是否完整、有沒有讓學員動手與當場修正；情境站看設定→推進（暫停引導）→Debrief（感受→分析→原則）→收尾；大堂看是否只是照念投影片，還是有提問、舉例、類比、實物。
+- ④ 口語、儀態與器材：錄音只能判斷口齒清晰、語速、贅詞、條理；儀態與器材主要依評分者標記，沒有標記就維持 2 分並在 caveat 註明。
+- 評分者現場標記優先於你從錄音的推測。
+- evidence 的 quote 直接摘逐字稿原句（≤30 字），t 用逐字稿的時間戳（m:ss）。
+- phrase 要像評分單範例那樣精簡具體，例如「情境合理、抓得到 Critical error」「只問同一位學員」「有暫停引導與自評」「聲音偏小」。
+- feedback 是給評分者在接下來 2 分鐘講評時直接念的：優點與建議都要具體到行為（做了什麼、造成什麼、下次怎麼調），不要說「很棒」。
+- 全部用繁體中文、台灣用語。`;
+  const user=`【站別】${st.name}
+【${st.kind==='scenario'?'抽到教案':st.kind==='lecture'?'抽到段別':'子題'}】${p[0]}
+${p[1]?'【本段教材重點】'+p[1]:''}
+【本站形式】${FLOW[st.kind]}
+【加分與扣分參考】${PLUS_MINUS}
+【碼表時間】${fmt(sess.dur)} → ⑤ 時間控制 ${ts} 分（已定）
+
+【逐字稿與評分者標記】
+${lines||'（無）'}`;
+  return {sys,user,ts};
+}
+
+function step(id,txt,state){
+  let el=document.getElementById('st-'+id);
+  if(!el){el=document.createElement('div');el.id='st-'+id;$('#steps').appendChild(el)}
+  el.className=state; el.textContent=(state==='done'?'✓ ':state==='run'?'⋯ ':'✗ ')+txt;
+}
+async function runScoring(){
+  const sess=S; const T0=performance.now();
+  $('#progCard').classList.remove('hidden'); $('#steps').innerHTML='';
+  step('tx',`等待逐字稿（${sess.chunks.length} 段）`,'run');
+  await Promise.all(sess.chunks.map(c=>c.p));
+  const failed=sess.chunks.filter(c=>!c.text&&c.err).length;
+  step('tx',`逐字稿完成（${sess.chunks.length} 段${failed?`，${failed} 段失敗`:''}）`,failed?'err':'done');
+  const {sys,user,ts}=buildPrompt(sess);
+  step('ai','AI 對照評分單評分中…','run');
+  let out;
+  try{
+    const ctl=new AbortController(); const to=setTimeout(()=>ctl.abort(),150000);
+    const body={model:cfg.mScore,messages:[{role:'system',content:sys},{role:'user',content:user}],
+      response_format:{type:'json_schema',json_schema:{name:'phpls_eval',strict:true,schema:SCHEMA}}};
+    if(/^(gpt-5|o\d)/.test(cfg.mScore)) body.reasoning_effort='low';
+    const r=await fetch('https://api.openai.com/v1/chat/completions',{method:'POST',signal:ctl.signal,headers:{'Content-Type':'application/json',Authorization:'Bearer '+cfg.key},body:JSON.stringify(body)});
+    clearTimeout(to);
+    const j=await r.json(); if(!r.ok) throw new Error(j.error?.message||r.status);
+    out=JSON.parse(j.choices[0].message.content);
+  }catch(e){
+    step('ai','評分失敗：'+(e.name==='AbortError'?'逾時':e.message),'err');
+    const b=document.createElement('button');b.className='btn';b.textContent='重新評分';b.style.marginTop='8px';b.onclick=()=>{b.remove();S=sess;runScoring()};$('#steps').appendChild(b);
+    return;
+  }
+  step('ai',`評分完成（停止錄音後 ${Math.round((performance.now()-T0)/1000)} 秒）`,'done');
+  const rec={
+    id:sess.id, ts:new Date().toISOString(), station:sess.station, part:sess.part, sid:sess.sid, name:sess.name, rater:cfg.rater,
+    dur:Math.round(sess.dur), ai:out,
+    scores:Object.fromEntries(out.items.map(i=>[i.key,i.score])), time:ts,
+    transcript:transcriptLines(sess).map(i=>`[${fmt(i.t)}] ${i.txt}`).join('\n'), saved:false
+  };
+  rec.comment=composeComment(rec);
+  renderResult(rec, sess);
+}
+function composeComment(rec){
+  const byKey=Object.fromEntries(rec.ai.items.map(i=>[i.key,i]));
+  const parts=KEYS.map(([k],n)=>`${byKey[k]?.phrase||''}（${'①②③④'[n]}${rec.scores[k]}）`);
+  const d=rec.dur, tt = d>450?`${fmt(d)} 強制下台`:d<330?`${fmt(d)} 就結束`:d>420?`${fmt(d)} 超時`:d<360?`${fmt(d)} 略短`:`${fmt(d)} 收尾`;
+  return parts.join('；')+`；${tt}（⑤${rec.time}）。`;
+}
+const total=r=>Object.values(r.scores).reduce((a,b)=>a+b,0)+r.time;
+
+function renderResult(rec,sess){
+  const st=STATIONS.find(s=>s.id===rec.station);
+  const box=$('#result'); box.classList.remove('hidden');
+  const byKey=Object.fromEntries(rec.ai.items.map(i=>[i.key,i]));
+  const tLink=t=>`<span class="t" data-t="${esc(t)}">${esc(t)}</span>`;
+  box.innerHTML=`
+  <div class="card">
+    <div class="kicker">${esc(st.name.replace('　','｜'))}｜${esc(st.parts[rec.part][0])}</div>
+    <h3 style="margin:2px 0 0">${esc(rec.sid)} ${esc(rec.name)}</h3>
+    <div class="total"><b id="totalN">${total(rec)}</b><span>/ 15</span></div>
+    <div class="score-grid">
+      ${KEYS.map(([k,label])=>{const it=byKey[k];return `<div class="item">
+        <h4><span>${label}</span><span class="seg" data-k="${k}">${[1,2,3].map(n=>`<button class="${rec.scores[k]===n?'on':''}" data-n="${n}">${n}</button>`).join('')}</span></h4>
+        <div class="why">${esc(it.reason)} <span class="ai">（AI 建議 ${it.score}）</span></div>
+        ${it.evidence.length?`<ul class="ev">${it.evidence.map(e=>`<li>${tLink(e.t)} 「${esc(e.quote)}」</li>`).join('')}</ul>`:''}
+      </div>`}).join('')}
+      <div class="item"><h4><span>⑤ 時間控制</span><span class="seg" data-k="time">${[1,2,3].map(n=>`<button class="${rec.time===n?'on':''}" data-n="${n}">${n}</button>`).join('')}</span></h4>
+        <div class="why">碼表 <input type="text" id="durIn" value="${fmt(rec.dur)}" style="width:80px;padding:4px 6px;display:inline-block"> <span class="ai">改時間會自動重算</span></div></div>
+    </div>
+    <label class="f">評語（可直接修改，會寫進紀錄）</label>
+    <textarea id="commentIn">${esc(rec.comment)}</textarea>
+    <div class="row" style="margin-top:10px">
+      <button class="btn" id="saveBtn">${rec.saved?'更新紀錄':'儲存並下一位'}</button>
+      <button class="btn sec" id="copyBtn">複製這一列</button>
+    </div>
+  </div>
+  <div class="card fb">
+    <div class="kicker">2 分鐘講評小抄</div>
+    <h5>做得好的</h5><ul>${rec.ai.feedback.strengths.map(s=>`<li>${esc(s)}</li>`).join('')}</ul>
+    <h5>下次可以</h5><ul>${rec.ai.feedback.improve.map(s=>`<li>${esc(s)}</li>`).join('')}</ul>
+    <h5>帶得走的一句</h5><div>${esc(rec.ai.feedback.takeaway)}</div>
+    <h5>可以先問他</h5><div>${esc(rec.ai.feedback.debrief_question)}</div>
+  </div>
+  ${rec.ai.content_issues.length?`<div class="card"><div class="kicker">內容需要確認</div>${rec.ai.content_issues.map(c=>`<div class="issue">${tLink(c.t)} <b>${esc(c.severity)}</b>：「${esc(c.said)}」→ ${esc(c.correct)}</div>`).join('')}</div>`:''}
+  ${rec.ai.practical_pearls.length?`<div class="card"><div class="kicker">教材外的實務補充（① 3 分證據）</div>${rec.ai.practical_pearls.map(s=>`<div class="pearl">${esc(s)}</div>`).join('')}</div>`:''}
+  <div class="card">
+    <div class="kicker">節奏與講話占比</div>
+    <div class="steps">${rec.ai.phases.map(p=>`<div>${esc(p.from)}–${esc(p.to)}　${esc(p.name)}</div>`).join('')}</div>
+    <p style="font-size:14px;margin:6px 0 0">${esc(rec.ai.teacher_talk_share)}</p>
+    <p class="hint" style="margin:6px 0 0">⚠ ${esc(rec.ai.caveat)}</p>
+    ${sess?`<audio id="player" controls src="${URL.createObjectURL(wavBlob(sess.pcm,sess.total))}"></audio>`:''}
+    <details style="margin-top:8px"><summary class="hint">完整逐字稿</summary><div class="tx" style="max-height:none;white-space:pre-wrap">${esc(rec.transcript)}</div></details>
+  </div>`;
+  box.querySelectorAll('.seg').forEach(seg=>seg.onclick=e=>{
+    const b=e.target.closest('button'); if(!b) return; const k=seg.dataset.k, n=+b.dataset.n;
+    if(k==='time') rec.time=n; else rec.scores[k]=n;
+    seg.querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));
+    rec.comment=composeComment(rec); $('#commentIn').value=rec.comment; $('#totalN').textContent=total(rec);
+  });
+  $('#durIn').onchange=e=>{const m=e.target.value.match(/(\d+)[:：](\d{1,2})/);if(!m)return;rec.dur=+m[1]*60+ +m[2];rec.time=timeScore(rec.dur);
+    box.querySelectorAll('.seg[data-k=time] button').forEach(x=>x.classList.toggle('on',+x.dataset.n===rec.time));rec.comment=composeComment(rec);$('#commentIn').value=rec.comment;$('#totalN').textContent=total(rec)};
+  box.onclick=e=>{const t=e.target.closest('.t');if(!t)return;const p=$('#player');if(!p)return;const m=String(t.dataset.t).match(/(\d+):(\d+)/);if(m){p.currentTime=+m[1]*60+ +m[2];p.play()}};
+  $('#copyBtn').onclick=()=>{rec.comment=$('#commentIn').value;copy(rowText(rec))};
+  $('#saveBtn').onclick=()=>{
+    rec.comment=$('#commentIn').value; rec.saved=true;
+    const i=records.findIndex(r=>r.id===rec.id); if(i>=0) records[i]=rec; else records.push(rec);
+    LS.set('records',records); toast('已儲存 '+rec.sid+'｜'+total(rec)+' 分');
+    $('#saveBtn').textContent='更新紀錄';
+    if(sess){onStation(); window.scrollTo({top:0,behavior:'smooth'}); S=null; $('#timer').textContent='0:00';$('#timer').className='';$('#zoneText').textContent='按下開始＝碼表起點（7 分鐘示範）';$('#barPin').style.left='0';$('#markLog').textContent='';$('#liveTx').innerHTML='<p class="pending">開始錄音後，每 30 秒會出現一段逐字稿</p>';$('#progCard').classList.add('hidden')}
+  };
+  box.scrollIntoView({behavior:'smooth'});
+}
+function rowText(r){const st=STATIONS.find(s=>s.id===r.station);return `${r.sid} ${r.name}｜${partShort(st.parts[r.part][0])}｜${r.scores.content} ${r.scores.interaction} ${r.scores.method} ${r.scores.delivery} ${r.time}｜${total(r)}｜${r.comment}`}
+const partShort=n=>(n.match(/^[①-⑤]/)||['—'])[0];
+function copy(t){navigator.clipboard?.writeText(t).then(()=>toast('已複製'),()=>{prompt('複製：',t)})}
+
+/* ================= 紀錄 ================= */
+function renderHist(sync){
+  const f=$('#histFilter'); const cur=(sync||!f.value)?$('#station').value:f.value;
+  f.innerHTML=`<option value="all">全部站別（${records.length}）</option>`+STATIONS.map(s=>{const n=records.filter(r=>r.station===s.id).length;return `<option value="${s.id}">${esc(s.name.replace('　','｜'))}（${n}）</option>`}).join('');
+  f.value=cur;
+  const rows=records.filter(r=>f.value==='all'||r.station===f.value).sort((a,b)=>a.sid.localeCompare(b.sid,'en',{numeric:true}));
+  $('#histTable').innerHTML=`<tr><th>學員</th><th>段</th><th>①</th><th>②</th><th>③</th><th>④</th><th>⑤</th><th>總</th><th>評語</th><th></th></tr>`+
+    rows.map(r=>{const st=STATIONS.find(s=>s.id===r.station);return `<tr><td>${esc(r.sid)}<br>${esc(r.name)}</td><td>${esc(partShort(st.parts[r.part][0]))}</td>
+      <td class="n">${r.scores.content}</td><td class="n">${r.scores.interaction}</td><td class="n">${r.scores.method}</td><td class="n">${r.scores.delivery}</td><td class="n">${r.time}</td>
+      <td class="n"><b>${total(r)}</b></td><td style="font-size:13px">${esc(r.comment)}</td><td><button class="btn sec" style="padding:4px 8px;font-size:13px" data-open="${r.id}">看</button></td></tr>`}).join('');
+}
+$('#histFilter').onchange=renderHist;
+$('#histTable').onclick=e=>{const b=e.target.closest('[data-open]');if(!b)return;const r=records.find(x=>x.id==b.dataset.open);showTab('rec');renderResult(r,null)};
+$('#copyAllBtn').onclick=()=>{const f=$('#histFilter').value;copy(records.filter(r=>f==='all'||r.station===f).sort((a,b)=>a.sid.localeCompare(b.sid,'en',{numeric:true})).map(rowText).join('\n'))};
+$('#csvBtn').onclick=()=>{
+  const q=s=>'"'+String(s??'').replace(/"/g,'""')+'"';
+  const lines=[['站別','段別/教案','編號','姓名','內容','互動','方法','口語','時間','總分','碼表','評語','評分者','時間戳'].map(q).join(',')]
+    .concat(records.map(r=>{const st=STATIONS.find(s=>s.id===r.station);return [st.name,st.parts[r.part][0],r.sid,r.name,r.scores.content,r.scores.interaction,r.scores.method,r.scores.delivery,r.time,total(r),fmt(r.dur),r.comment,r.rater,r.ts].map(q).join(',')}));
+  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob(['﻿'+lines.join('\n')],{type:'text/csv'}));a.download='PHPLS示範教學評分.csv';a.click();
+};
+
+fillStations();
+</script>
+</body>
+</html>
