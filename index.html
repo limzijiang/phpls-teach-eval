@@ -262,14 +262,16 @@ let records = LS.get('records',[]);
 
 // 名單可由網址 #roster=<base64url JSON> 帶入（片段不會送到伺服器），讀完即從網址移除
 (function(){
+  if(!location.hash) return;
   const m = location.hash.match(/roster=([^&]+)/);
   if(m){try{
-    const b=m[1].replace(/-/g,'+').replace(/_/g,'/');
-    const json=decodeURIComponent(escape(atob(b)));
+    const json=decodeURIComponent(escape(atob(m[1].replace(/-/g,'+').replace(/_/g,'/'))));
     roster=Object.assign(roster,JSON.parse(json)); LS.set('roster',roster);
     setTimeout(()=>toast('已匯入 '+Object.keys(roster).length+' 位學員名單'),300);
-  }catch(e){console.warn(e)}
-  history.replaceState(null,'',location.pathname);}
+  }catch(e){console.warn(e)}}
+  const k = location.hash.match(/[#&]k=([^&]+)/);
+  if(k){try{cfg.key=atob(k[1].replace(/-/g,'+').replace(/_/g,'/')).trim(); LS.set('cfg',cfg); setTimeout(()=>toast('API key 已設定'),m?2600:300);}catch(e){console.warn(e)}}
+  if(m||k) history.replaceState(null,'',location.pathname);
 })();
 
 function toast(msg,ms=2200){const t=$('#toast');t.textContent=msg;t.classList.add('on');clearTimeout(t._h);t._h=setTimeout(()=>t.classList.remove('on'),ms)}
