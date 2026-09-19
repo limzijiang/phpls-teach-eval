@@ -360,19 +360,19 @@ function buildPrompt(sess){
   const st=STATIONS.find(s=>s.id===sess.station), p=st.parts[sess.part];
   const ts=timeScore(sess.dur);
   const lines=transcriptLines(sess).map(i=>`[${fmt(i.t)}] ${i.txt}`).join('\n');
-  const sys=`你是台灣急診醫學會暨台灣緊急救護醫療指導醫師學會 PHPLS 聯合工作小組的資深評分指導醫師，正在評「PHPLS 指導員課程」學員的 7 分鐘示範教學。你手上只有錄音逐字稿（每 30 秒一段、時間戳是該段起點、自動語音轉錄可能有錯字）與評分者的現場標記。
+  const sys=`你是台灣急診醫學會暨台灣緊急救護醫療指導醫師學會 PHPLS 聯合工作小組的資深評分指導醫師，正在評「PHPLS 指導員課程」學員的 7 分鐘示範教學。你手上只有錄音逐字稿（每 30 秒一段、時間戳是該段起點、自動語音轉錄可能有錯字）。
 
 評分標準（每項 1–3 分，建議起始分 2 分，滿分 15）：
 ${RUBRIC}
 
 評分原則：
 - ⑤ 時間控制由碼表決定，已算好，不用你評。你評 ①–④。
-- 從 2 分出發。給 3 分要有逐字稿或現場標記的具體證據；給 1 分也要有具體證據（① 給 1 分必須引用到真的錯的內容，排除轉錄錯字的可能）。
+- 從 2 分出發。給 3 分要有逐字稿的具體證據；給 1 分也要有具體證據（① 給 1 分必須引用到真的錯的內容，排除轉錄錯字的可能）。
 - ① 內容：對照本段的教材重點與 2025 AHA；3 分門檻是「時間內補充教材外的實務知識或技巧」（例如現場經驗、常見錯誤、器材眉角）。
 - ② 互動：看有沒有提問、點學員回答、讓學員上來做、請學員互評；只問「懂嗎？」「有沒有問題？」不算真互動。
 - ③ 方法：技術站看 4D（Describe→Demo→Do→Debrief）是否完整、有沒有讓學員動手與當場修正；情境站看設定→推進（暫停引導）→Debrief（感受→分析→原則）→收尾；大堂看是否只是照念投影片，還是有提問、舉例、類比、實物。
-- ④ 口語、儀態與器材：錄音只能判斷口齒清晰、語速、贅詞、條理；儀態與器材主要依評分者標記，沒有標記就維持 2 分並在 caveat 註明。
-- 評分者現場標記優先於你從錄音的推測。
+- ④ 口語、儀態與器材：錄音只能判斷口齒清晰、語速、贅詞、條理，以及口語中提到的器材操作；看不到的儀態與器材就不要據以加減分，並在 caveat 提醒評分者自行確認。
+- ③ 方法中「有沒有實際示範、讓學員動手」請從口語線索判斷（例如「大家看我的手」「請你上來做一次」），不確定時在 caveat 註明。
 - evidence 的 quote 直接摘逐字稿原句（≤30 字），t 用逐字稿的時間戳（m:ss）。
 - phrase 要像評分單範例那樣精簡具體，例如「情境合理、抓得到 Critical error」「只問同一位學員」「有暫停引導與自評」「聲音偏小」。
 - feedback 是給評分者在接下來 2 分鐘講評時直接念的：優點與建議都要具體到行為（做了什麼、造成什麼、下次怎麼調），不要說「很棒」。
@@ -384,7 +384,7 @@ ${p[1]?'【本段教材重點】'+p[1]:''}
 【加分與扣分參考】${PLUS_MINUS}
 【碼表時間】${fmt(sess.dur)} → ⑤ 時間控制 ${ts} 分（已定）
 
-【逐字稿與評分者標記】
+【逐字稿】
 ${lines||'（無）'}`;
   return {sys,user,ts};
 }
@@ -422,12 +422,6 @@ function makePanel(letter){
     <div class="bar"><i class="barPin"></i><b style="left:78.6%;transform:translateX(-100%)">5:30</b><b style="left:92.85%;color:var(--ok)">6–7′</b></div>
     <button class="recBtn">開始</button>
     <div class="level"><i></i></div>
-  </div>
-  <div class="card">
-    <div class="kicker">現場觀察（點一下就記時間）</div>
-    <div class="chips">${CHIPS.map(([t,neg],i)=>`<button class="chip${neg?' neg':''}" data-i="${i}">${t}</button>`).join('')}</div>
-    <div class="row" style="margin-top:8px"><input type="text" class="q-note" placeholder="自由備註，按 Enter 記錄"></div>
-    <div class="markLog"></div>
   </div>
   <div class="card">
     <div class="kicker">即時逐字稿（每 30 秒一段）</div>
@@ -505,7 +499,7 @@ function makePanel(letter){
     try{wakeLock=await navigator.wakeLock?.request('screen')}catch(e){}
     S.t0=performance.now();
     q('.recBtn').textContent='停止'; q('.recBtn').classList.add('on');
-    q('.markLog').textContent=''; lockInputs(true); renderTx();
+    lockInputs(true); renderTx();
     setState(`錄音中｜${S.sid} ${S.name}`,'recording'); $('#station').disabled=true;
     other()?.refreshSelectors();
     tick=setInterval(updateTimer,200);
@@ -542,16 +536,6 @@ function makePanel(letter){
   }
   P.isRecording=isRecording;
   q('.recBtn').onclick=()=>{isRecording()?stop():start()};
-
-  function addMark(label){
-    const S=P.S; if(!S){toast('先按「開始」再標記');return}
-    const t=S.t0?(performance.now()-S.t0)/1000:(S.dur||0);
-    S.marks.push({t,label}); navigator.vibrate?.(30);
-    q('.markLog').innerHTML=S.marks.map(m=>`<span class="pill">${fmt(m.t)} ${esc(m.label)}</span>`).join(' ');
-    renderTx();
-  }
-  q('.chips').onclick=e=>{const b=e.target.closest('.chip');if(b)addMark(CHIPS[b.dataset.i][0])};
-  q('.q-note').onkeydown=e=>{if(e.key==='Enter'&&e.target.value.trim()){addMark('📝 '+e.target.value.trim());e.target.value=''}};
 
   q('.q-file').onchange=async e=>{
     const f=e.target.files[0]; e.target.value=''; if(!f) return;
@@ -679,7 +663,7 @@ function makePanel(letter){
   P.reset=function(){
     P.S=null; P.pendingRec=null; P.busy=false;
     q('.timer').textContent='0:00'; q('.timer').className='timer'; q('.zoneText').textContent='按下開始＝碼表起點（7 分鐘示範）';
-    q('.barPin').style.left='0'; q('.markLog').textContent='';
+    q('.barPin').style.left='0';
     q('.q-live').innerHTML='<p class="pending">開始錄音後，每 30 秒會出現一段逐字稿</p>';
     q('.q-prog').classList.add('hidden'); q('.q-result').classList.add('hidden'); q('.q-result').innerHTML='';
     setState('待命','');
