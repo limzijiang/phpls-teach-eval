@@ -760,7 +760,7 @@ function renderHist(sync){
       <td class="n">${r.scores.content}</td><td class="n">${r.scores.interaction}</td><td class="n">${r.scores.method}</td><td class="n">${r.scores.delivery}</td><td class="n">${r.time}</td>
       <td class="n"><b>${total(r)}</b></td><td style="font-size:13px">${esc(r.comment)}</td><td><button class="btn sec" style="padding:4px 8px;font-size:13px" data-open="${r.id}">看</button></td></tr>`}).join('');
 }
-$('#histFilter').onchange=renderHist;
+$('#histFilter').onchange=()=>renderHist(false);
 $('#histTable').onclick=e=>{const b=e.target.closest('[data-open]');if(!b)return;const r=records.find(x=>x.id==b.dataset.open);const p=PANELS.find(p=>p.idle());if(!p){toast('兩台都在使用中');return}showTab('rec');p.reset();p.showResult(r,null);p.root.scrollIntoView({behavior:'smooth'})};
 $('#copyAllBtn').onclick=()=>{const f=$('#histFilter').value;copy(records.filter(r=>f==='all'||r.station===f).sort((a,b)=>a.sid.localeCompare(b.sid,'en',{numeric:true})).map(rowText).join('\n'))};
 $('#csvBtn').onclick=()=>{
