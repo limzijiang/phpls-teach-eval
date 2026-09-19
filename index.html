@@ -124,7 +124,8 @@ audio{width:100%;margin-top:8px}
 
 <!-- ============ 紀錄 ============ -->
 <section id="tab-hist" class="hidden">
-  <div class="card">
+  <div id="histDetail" class="hidden"></div>
+  <div class="card" id="histListCard">
     <div class="kicker">已儲存的評分</div>
     <div class="row" style="margin-bottom:8px">
       <select id="histFilter"></select>
@@ -466,6 +467,66 @@ function rowText(r){const st=STATIONS.find(s=>s.id===r.station);return `${r.sid}
 const partShort=n=>(n.match(/^[①-⑤]/)||['—'])[0];
 function copy(t){navigator.clipboard?.writeText(t).then(()=>toast('已複製'),()=>{prompt('複製：',t)})}
 
+function renderResultInto(box,rec,S,saveLabel){
+  const st=STATIONS.find(s=>s.id===rec.station);
+  const byKey=Object.fromEntries(rec.ai.items.map(i=>[i.key,i]));
+  const tLink=t=>`<span class="t" data-t="${esc(t)}">${esc(t)}</span>`;
+  box.innerHTML=`
+  <div class="card">
+    <div class="kicker">${esc(st.name.replace('　','｜'))}｜${esc(st.parts[rec.part][0])}</div>
+    <h3 style="margin:2px 0 0">${esc(rec.sid)} ${esc(rec.name)}</h3>
+    <div class="total"><b class="q-total">${total(rec)}</b><span>/ 15</span></div>
+    <div class="score-grid">
+      ${KEYS.map(([k,label])=>{const it=byKey[k];return `<div class="item">
+        <h4><span>${label}</span><span class="seg" data-k="${k}">${[1,2,3].map(n=>`<button class="${rec.scores[k]===n?'on':''}" data-n="${n}">${n}</button>`).join('')}</span></h4>
+        <div class="why">${esc(it.reason)} <span class="ai">（AI 建議 ${it.score}）</span></div>
+        ${it.evidence.length?`<ul class="ev">${it.evidence.map(e=>`<li>${tLink(e.t)} 「${esc(e.quote)}」</li>`).join('')}</ul>`:''}
+      </div>`}).join('')}
+      <div class="item"><h4><span>⑤ 時間控制</span><span class="seg" data-k="time">${[1,2,3].map(n=>`<button class="${rec.time===n?'on':''}" data-n="${n}">${n}</button>`).join('')}</span></h4>
+        <div class="why">碼表 <input type="text" class="q-dur" value="${fmt(rec.dur)}" style="width:80px;padding:4px 6px;display:inline-block"> <span class="ai">改時間會自動重算</span></div></div>
+    </div>
+    <label class="f">評語（可直接修改，會寫進紀錄）</label>
+    <textarea class="q-comment">${esc(rec.comment)}</textarea>
+    <div class="row" style="margin-top:10px">
+      <button class="btn q-save">${saveLabel}</button>
+      <button class="btn sec q-copy">複製這一列</button>
+    </div>
+  </div>
+  <div class="card fb">
+    <div class="kicker">2 分鐘講評小抄</div>
+    <h5>做得好的</h5><ul>${rec.ai.feedback.strengths.map(s=>`<li>${esc(s)}</li>`).join('')}</ul>
+    <h5>下次可以</h5><ul>${rec.ai.feedback.improve.map(s=>`<li>${esc(s)}</li>`).join('')}</ul>
+    <h5>帶得走的一句</h5><div>${esc(rec.ai.feedback.takeaway)}</div>
+    <h5>可以先問他</h5><div>${esc(rec.ai.feedback.debrief_question)}</div>
+  </div>
+  ${rec.ai.voice?`<div class="card fb"><div class="kicker">聲音表現（多模態）</div>
+    <h5>語調</h5><div>${esc(rec.ai.voice.intonation)}</div><h5>語速</h5><div>${esc(rec.ai.voice.pace)}</div>
+    <h5>音量</h5><div>${esc(rec.ai.voice.volume)}</div><h5>流暢</h5><div>${esc(rec.ai.voice.fluency)}</div>
+    <h5>自信與台風</h5><div>${esc(rec.ai.voice.confidence)}</div><h5>總結</h5><div>${esc(rec.ai.voice.overall)}</div>
+    ${rec.voiceSeg?.length?`<details style="margin-top:8px"><summary class="hint">每 30 秒數據</summary><div style="overflow-x:auto"><table class="vt"><tr><th>時間</th><th>dBFS</th><th>有聲</th><th>停頓</th><th>音高±</th><th>字/分</th><th>聆聽</th></tr>${rec.voiceSeg.map(v=>`<tr><td><span class="t" data-t="${fmt(v.start)}">${fmt(v.start)}</span></td><td>${v.ac?.level??''}</td><td>${v.ac?.speech??''}%</td><td>${v.ac?.pause??''}s</td><td>${v.ac?.f0sd??''}</td><td>${v.rate??''}</td><td>${v.voice?esc(v.voice.intonation+'；'+v.voice.pace+'；'+v.voice.voices):''}</td></tr>`).join('')}</table></div></details>`:''}
+  </div>`:''}
+  ${rec.ai.content_issues.length?`<div class="card"><div class="kicker">內容需要確認</div>${rec.ai.content_issues.map(c=>`<div class="issue">${tLink(c.t)} <b>${esc(c.severity)}</b>：「${esc(c.said)}」→ ${esc(c.correct)}</div>`).join('')}</div>`:''}
+  ${rec.ai.practical_pearls.length?`<div class="card"><div class="kicker">教材外的實務補充（① 3 分證據）</div>${rec.ai.practical_pearls.map(s=>`<div class="pearl">${esc(s)}</div>`).join('')}</div>`:''}
+  <div class="card">
+    <div class="kicker">節奏與講話占比</div>
+    <div class="steps">${rec.ai.phases.map(p=>`<div>${esc(p.from)}–${esc(p.to)}　${esc(p.name)}</div>`).join('')}</div>
+    <p style="font-size:14px;margin:6px 0 0">${esc(rec.ai.teacher_talk_share)}</p>
+    <p class="hint" style="margin:6px 0 0">⚠ ${esc(rec.ai.caveat)}</p>
+    ${S?`<audio class="q-player" controls src="${URL.createObjectURL(wavBlob(S.pcm,S.total))}"></audio>`:''}
+    <details style="margin-top:8px"><summary class="hint">完整逐字稿</summary><div class="tx" style="max-height:none;white-space:pre-wrap">${esc(rec.transcript)}</div></details>
+  </div>`;
+  const upd=()=>{rec.comment=composeComment(rec); box.querySelector('.q-comment').value=rec.comment; box.querySelector('.q-total').textContent=total(rec)};
+  box.querySelectorAll('.seg').forEach(seg=>seg.onclick=e=>{
+    const b=e.target.closest('button'); if(!b) return; const k=seg.dataset.k, n=+b.dataset.n;
+    if(k==='time') rec.time=n; else rec.scores[k]=n;
+    seg.querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b)); upd();
+  });
+  box.querySelector('.q-dur').onchange=e=>{const m=e.target.value.match(/(\d+)[:：](\d{1,2})/);if(!m)return;rec.dur=+m[1]*60+ +m[2];rec.time=timeScore(rec.dur);
+    box.querySelectorAll('.seg[data-k=time] button').forEach(x=>x.classList.toggle('on',+x.dataset.n===rec.time)); upd()};
+  box.onclick=e=>{const t=e.target.closest('.t');if(!t)return;const p=box.querySelector('.q-player');if(!p)return;const m=String(t.dataset.t).match(/(\d+):(\d+)/);if(m){p.currentTime=+m[1]*60+ +m[2];p.play()}};
+  box.querySelector('.q-copy').onclick=()=>{rec.comment=box.querySelector('.q-comment').value;copy(rowText(rec))};
+}
+
 /* ================= 評分台（A／B 兩台並排：一台評分時另一台可錄下一位） ================= */
 const PANELS=[];
 function claimedBy(other){ // 另一台正在錄、評分中或有未儲存結果的學員
@@ -671,64 +732,8 @@ function makePanel(letter){
   P.showResult=function(rec,S){
     P.pendingRec=rec; P.S=S||null;
     setState(`${rec.saved?'檢視':'待確認'}｜${rec.sid} ${rec.name}`,rec.saved?'':'review');
-    const st=STATIONS.find(s=>s.id===rec.station);
     const box=q('.q-result'); box.classList.remove('hidden');
-    const byKey=Object.fromEntries(rec.ai.items.map(i=>[i.key,i]));
-    const tLink=t=>`<span class="t" data-t="${esc(t)}">${esc(t)}</span>`;
-    box.innerHTML=`
-    <div class="card">
-      <div class="kicker">${esc(st.name.replace('　','｜'))}｜${esc(st.parts[rec.part][0])}</div>
-      <h3 style="margin:2px 0 0">${esc(rec.sid)} ${esc(rec.name)}</h3>
-      <div class="total"><b class="q-total">${total(rec)}</b><span>/ 15</span></div>
-      <div class="score-grid">
-        ${KEYS.map(([k,label])=>{const it=byKey[k];return `<div class="item">
-          <h4><span>${label}</span><span class="seg" data-k="${k}">${[1,2,3].map(n=>`<button class="${rec.scores[k]===n?'on':''}" data-n="${n}">${n}</button>`).join('')}</span></h4>
-          <div class="why">${esc(it.reason)} <span class="ai">（AI 建議 ${it.score}）</span></div>
-          ${it.evidence.length?`<ul class="ev">${it.evidence.map(e=>`<li>${tLink(e.t)} 「${esc(e.quote)}」</li>`).join('')}</ul>`:''}
-        </div>`}).join('')}
-        <div class="item"><h4><span>⑤ 時間控制</span><span class="seg" data-k="time">${[1,2,3].map(n=>`<button class="${rec.time===n?'on':''}" data-n="${n}">${n}</button>`).join('')}</span></h4>
-          <div class="why">碼表 <input type="text" class="q-dur" value="${fmt(rec.dur)}" style="width:80px;padding:4px 6px;display:inline-block"> <span class="ai">改時間會自動重算</span></div></div>
-      </div>
-      <label class="f">評語（可直接修改，會寫進紀錄）</label>
-      <textarea class="q-comment">${esc(rec.comment)}</textarea>
-      <div class="row" style="margin-top:10px">
-        <button class="btn q-save">${rec.saved?'更新紀錄':'儲存並清空此台'}</button>
-        <button class="btn sec q-copy">複製這一列</button>
-      </div>
-    </div>
-    <div class="card fb">
-      <div class="kicker">2 分鐘講評小抄</div>
-      <h5>做得好的</h5><ul>${rec.ai.feedback.strengths.map(s=>`<li>${esc(s)}</li>`).join('')}</ul>
-      <h5>下次可以</h5><ul>${rec.ai.feedback.improve.map(s=>`<li>${esc(s)}</li>`).join('')}</ul>
-      <h5>帶得走的一句</h5><div>${esc(rec.ai.feedback.takeaway)}</div>
-      <h5>可以先問他</h5><div>${esc(rec.ai.feedback.debrief_question)}</div>
-    </div>
-    ${rec.ai.voice?`<div class="card fb"><div class="kicker">聲音表現（多模態）</div>
-      <h5>語調</h5><div>${esc(rec.ai.voice.intonation)}</div><h5>語速</h5><div>${esc(rec.ai.voice.pace)}</div>
-      <h5>音量</h5><div>${esc(rec.ai.voice.volume)}</div><h5>流暢</h5><div>${esc(rec.ai.voice.fluency)}</div>
-      <h5>自信與台風</h5><div>${esc(rec.ai.voice.confidence)}</div><h5>總結</h5><div>${esc(rec.ai.voice.overall)}</div>
-      ${rec.voiceSeg?.length?`<details style="margin-top:8px"><summary class="hint">每 30 秒數據</summary><div style="overflow-x:auto"><table class="vt"><tr><th>時間</th><th>dBFS</th><th>有聲</th><th>停頓</th><th>音高±</th><th>字/分</th><th>聆聽</th></tr>${rec.voiceSeg.map(v=>`<tr><td><span class="t" data-t="${fmt(v.start)}">${fmt(v.start)}</span></td><td>${v.ac?.level??''}</td><td>${v.ac?.speech??''}%</td><td>${v.ac?.pause??''}s</td><td>${v.ac?.f0sd??''}</td><td>${v.rate??''}</td><td>${v.voice?esc(v.voice.intonation+'；'+v.voice.pace+'；'+v.voice.voices):''}</td></tr>`).join('')}</table></div></details>`:''}
-    </div>`:''}
-    ${rec.ai.content_issues.length?`<div class="card"><div class="kicker">內容需要確認</div>${rec.ai.content_issues.map(c=>`<div class="issue">${tLink(c.t)} <b>${esc(c.severity)}</b>：「${esc(c.said)}」→ ${esc(c.correct)}</div>`).join('')}</div>`:''}
-    ${rec.ai.practical_pearls.length?`<div class="card"><div class="kicker">教材外的實務補充（① 3 分證據）</div>${rec.ai.practical_pearls.map(s=>`<div class="pearl">${esc(s)}</div>`).join('')}</div>`:''}
-    <div class="card">
-      <div class="kicker">節奏與講話占比</div>
-      <div class="steps">${rec.ai.phases.map(p=>`<div>${esc(p.from)}–${esc(p.to)}　${esc(p.name)}</div>`).join('')}</div>
-      <p style="font-size:14px;margin:6px 0 0">${esc(rec.ai.teacher_talk_share)}</p>
-      <p class="hint" style="margin:6px 0 0">⚠ ${esc(rec.ai.caveat)}</p>
-      ${S?`<audio class="q-player" controls src="${URL.createObjectURL(wavBlob(S.pcm,S.total))}"></audio>`:''}
-      <details style="margin-top:8px"><summary class="hint">完整逐字稿</summary><div class="tx" style="max-height:none;white-space:pre-wrap">${esc(rec.transcript)}</div></details>
-    </div>`;
-    const upd=()=>{rec.comment=composeComment(rec); q('.q-comment').value=rec.comment; q('.q-total').textContent=total(rec)};
-    box.querySelectorAll('.seg').forEach(seg=>seg.onclick=e=>{
-      const b=e.target.closest('button'); if(!b) return; const k=seg.dataset.k, n=+b.dataset.n;
-      if(k==='time') rec.time=n; else rec.scores[k]=n;
-      seg.querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b)); upd();
-    });
-    q('.q-dur').onchange=e=>{const m=e.target.value.match(/(\d+)[:：](\d{1,2})/);if(!m)return;rec.dur=+m[1]*60+ +m[2];rec.time=timeScore(rec.dur);
-      box.querySelectorAll('.seg[data-k=time] button').forEach(x=>x.classList.toggle('on',+x.dataset.n===rec.time)); upd()};
-    box.onclick=e=>{const t=e.target.closest('.t');if(!t)return;const p=q('.q-player');if(!p)return;const m=String(t.dataset.t).match(/(\d+):(\d+)/);if(m){p.currentTime=+m[1]*60+ +m[2];p.play()}};
-    q('.q-copy').onclick=()=>{rec.comment=q('.q-comment').value;copy(rowText(rec))};
+    renderResultInto(box,rec,S,rec.saved?'更新紀錄':'儲存並清空此台');
     q('.q-save').onclick=()=>{
       rec.comment=q('.q-comment').value; rec.saved=true;
       const i=records.findIndex(r=>r.id===rec.id); if(i>=0) records[i]=rec; else records.push(rec);
@@ -761,7 +766,22 @@ function renderHist(sync){
       <td class="n"><b>${total(r)}</b></td><td style="font-size:13px">${esc(r.comment)}</td><td><button class="btn sec" style="padding:4px 8px;font-size:13px" data-open="${r.id}">看</button></td></tr>`}).join('');
 }
 $('#histFilter').onchange=()=>renderHist(false);
-$('#histTable').onclick=e=>{const b=e.target.closest('[data-open]');if(!b)return;const r=records.find(x=>x.id==b.dataset.open);const p=PANELS.find(p=>p.idle());if(!p){toast('兩台都在使用中');return}showTab('rec');p.reset();p.showResult(r,null);p.root.scrollIntoView({behavior:'smooth'})};
+$('#histTable').onclick=e=>{const b=e.target.closest('[data-open]');if(!b)return;openHistDetail(records.find(x=>x.id==b.dataset.open))};
+function openHistDetail(orig){
+  const rec=structuredClone(orig); // 修改後按「更新紀錄」才寫回
+  const box=$('#histDetail'); box.classList.remove('hidden');
+  box.innerHTML='<div class="row" style="margin-bottom:8px"><button class="btn sec" id="histBack">← 回列表</button></div><div class="hd"></div>';
+  const inner=box.querySelector('.hd'); renderResultInto(inner,rec,null,'更新紀錄');
+  $('#histListCard').classList.add('hidden');
+  $('#histBack').onclick=closeHistDetail;
+  inner.querySelector('.q-save').onclick=()=>{
+    rec.comment=inner.querySelector('.q-comment').value;
+    const i=records.findIndex(r=>r.id===rec.id); if(i>=0) records[i]=rec;
+    LS.set('records',records); toast(`已更新 ${rec.sid}｜${total(rec)} 分`); closeHistDetail(); PANELS.forEach(p=>p.refreshSelectors());
+  };
+  window.scrollTo({top:0});
+}
+function closeHistDetail(){$('#histDetail').classList.add('hidden');$('#histDetail').innerHTML='';$('#histListCard').classList.remove('hidden');renderHist()}
 $('#copyAllBtn').onclick=()=>{const f=$('#histFilter').value;copy(records.filter(r=>f==='all'||r.station===f).sort((a,b)=>a.sid.localeCompare(b.sid,'en',{numeric:true})).map(rowText).join('\n'))};
 $('#csvBtn').onclick=()=>{
   const q=s=>'"'+String(s??'').replace(/"/g,'""')+'"';
