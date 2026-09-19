@@ -69,6 +69,8 @@ main.wide{max-width:1440px}
 .tx{font-size:14px;max-height:260px;overflow:auto;background:#fffdfc;border:1px solid var(--line);border-radius:10px;padding:8px 10px}
 .tx p{margin:0 0 6px}.tx .t{color:var(--gold);font-weight:700;font-family:ui-monospace,Menlo,monospace;margin-right:6px;cursor:pointer}
 .tx .m{color:var(--red)}
+.vm{font-size:12px;color:var(--mute)}
+.vt td,.vt th{font-size:12px;padding:4px 3px}
 .pending{color:var(--mute);font-style:italic}
 /* result */
 .score-grid{display:grid;grid-template-columns:1fr;gap:8px}
@@ -145,6 +147,7 @@ audio{width:100%;margin-top:8px}
       <div><label class="f">轉錄模型</label><input type="text" id="mTx"></div>
       <div><label class="f">評分模型</label><input type="text" id="mScore"></div>
     </div>
+    <label class="f">聲音聆聽模型（多模態：語調、語速、流暢、自信；留空＝只用逐字稿）</label><input type="text" id="mAudio">
     <label class="f">評分者</label><input type="text" id="rater" placeholder="例：林自強">
     <label class="f" style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="beep"> 6:00／7:00／7:30 發出提示音（預設只震動＋閃爍）</label>
   </div>
@@ -234,7 +237,7 @@ const LS = {
   get(k,d){try{const v=localStorage.getItem('phpls_'+k);return v==null?d:JSON.parse(v)}catch(e){return d}},
   set(k,v){try{localStorage.setItem('phpls_'+k,JSON.stringify(v))}catch(e){toast('本機儲存失敗：'+e.message)}}
 };
-let cfg = Object.assign({key:'',mTx:'gpt-4o-transcribe',mScore:'gpt-5.4',rater:'',beep:false}, LS.get('cfg',{}));
+let cfg = Object.assign({key:'',mTx:'gpt-4o-transcribe',mScore:'gpt-5.4',mAudio:'gpt-audio-1.5',rater:'',beep:false}, LS.get('cfg',{}));
 let roster = LS.get('roster',{});
 let records = LS.get('records',[]);
 
@@ -284,13 +287,13 @@ function showTab(t){
 }
 document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>showTab(b.dataset.tab));
 $('#setBtn').onclick=()=>{
-  $('#apiKey').value=cfg.key;$('#mTx').value=cfg.mTx;$('#mScore').value=cfg.mScore;$('#rater').value=cfg.rater;$('#beep').checked=cfg.beep;
+  $('#apiKey').value=cfg.key;$('#mTx').value=cfg.mTx;$('#mScore').value=cfg.mScore;$('#mAudio').value=cfg.mAudio;$('#rater').value=cfg.rater;$('#beep').checked=cfg.beep;
   $('#rosterIn').value=Object.entries(roster).map(([k,v])=>k+' '+v).join('\n');
   showTab('set');
 };
 $('#closeSet').onclick=()=>showTab('rec');
 $('#saveSet').onclick=()=>{
-  cfg={key:$('#apiKey').value.trim(),mTx:$('#mTx').value.trim()||'gpt-4o-transcribe',mScore:$('#mScore').value.trim()||'gpt-5.4',rater:$('#rater').value.trim(),beep:$('#beep').checked};
+  cfg={key:$('#apiKey').value.trim(),mTx:$('#mTx').value.trim()||'gpt-4o-transcribe',mScore:$('#mScore').value.trim()||'gpt-5.4',mAudio:$('#mAudio').value.trim(),rater:$('#rater').value.trim(),beep:$('#beep').checked};
   LS.set('cfg',cfg);
   roster={}; $('#rosterIn').value.split('\n').forEach(l=>{const m=l.trim().match(/^([A-Da-d])-?0*(\d{1,2})[\s,，、\t]+(.+)$/);if(m)roster[m[1].toUpperCase()+m[2]]=m[3].trim()});
   LS.set('roster',roster); syncKeyWarn();
@@ -313,6 +316,60 @@ function downsample(input,inRate,st){
   while(pos<input.length){const i0=Math.floor(pos),i1=Math.min(input.length-1,Math.floor(pos+ratio));let s=0,n=0;for(let i=i0;i<=i1;i++){s+=input[i];n++}out.push(s/n);pos+=ratio}
   st.resampPos=pos-input.length; return Float32Array.from(out);
 }
+// 16 kHz mono Float32 → 客觀聲學指標（音量、說話占比、停頓、音高變化）
+function acoustics(x){
+  const SR=16000, FR=640, HOP=320; // 40 ms 窗、20 ms 步
+  const n=Math.floor((x.length-FR)/HOP)+1; if(n<10) return null;
+  const db=new Float32Array(n);
+  for(let k=0;k<n;k++){let s=0;const o=k*HOP;for(let i=0;i<FR;i++){const v=x[o+i];s+=v*v}db[k]=10*Math.log10(s/FR+1e-10)}
+  const sorted=Array.from(db).sort((a,b)=>a-b);
+  const floor=sorted[Math.floor(n*0.1)], top=sorted[Math.floor(n*0.95)];
+  const thr=Math.max(floor+4, floor+0.35*(top-floor)); // 依噪音底與語音峰值自適應
+  const voiced=[]; let run=0,longest=0;
+  for(let k=0;k<n;k++){ if(db[k]>thr){voiced.push(k); longest=Math.max(longest,run); run=0} else run++ }
+  longest=Math.max(longest,run);
+  const speech=voiced.length/n;
+  const vdb=voiced.map(k=>db[k]).sort((a,b)=>a-b);
+  const level=vdb.length?vdb[Math.floor(vdb.length/2)]:null;
+  // 音高：8 kHz 自相關，50–400 Hz
+  const f0=[];
+  for(let j=0;j<voiced.length;j+=2){
+    const o=voiced[j]*HOP; const w=[]; for(let i=0;i<FR;i+=2) w.push(x[o+i]); // 8 kHz, 320 樣本
+    let e0=0; for(const v of w) e0+=v*v; if(e0<1e-6) continue;
+    let best=0,bl=0;
+    for(let L=20;L<=160;L++){let c=0,e1=0,e2=0;for(let i=0;i+L<w.length;i++){c+=w[i]*w[i+L];e1+=w[i]*w[i];e2+=w[i+L]*w[i+L]}const r=c/Math.sqrt(e1*e2+1e-12);if(r>best){best=r;bl=L}}
+    if(best>0.55) f0.push(8000/bl);
+  }
+  let f0med=null,f0sd=null;
+  if(f0.length>=10){
+    const fs=f0.slice().sort((a,b)=>a-b); f0med=fs[Math.floor(fs.length/2)];
+    const st=f0.map(f=>12*Math.log2(f/f0med)).filter(v=>Math.abs(v)<12);
+    const m=st.reduce((a,b)=>a+b,0)/st.length; f0sd=Math.sqrt(st.reduce((a,b)=>a+(b-m)**2,0)/st.length);
+  }
+  return {level:level==null?null:Math.round(level), speech:Math.round(speech*100), pause:+(longest*HOP/SR).toFixed(1), f0:f0med&&Math.round(f0med), f0sd:f0sd==null?null:+f0sd.toFixed(1)};
+}
+
+function blobToB64(b){return new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(String(r.result).split(',')[1]);r.onerror=rej;r.readAsDataURL(b)})}
+function parseLooseJSON(t){t=String(t||'').replace(/```(json)?/g,'');const a=t.indexOf('{'),b=t.lastIndexOf('}');return JSON.parse(t.slice(a,b+1))}
+async function listenChunk(ch,onUpdate){
+  if(!cfg.mAudio){ch.voice=null;return}
+  const len=fmt(ch.end-ch.start);
+  const prompt=`你是資深臨床教學評審，正在聽一段醫學示範教學錄音的其中一段（整場第 ${fmt(ch.start)}–${fmt(ch.end)}，這段長 ${len}）。只評「聽得到的非文字訊息」，不要評內容對錯。
+嚴格要求：只描述你確實聽到的聲音特徵；不要從說話內容推測（例如講者說「請學員上來」不代表你聽到學員說話）；如果只有一個人的聲音，voices 就寫「只有主講者」；聽不出來就寫「無法判斷」；不要客套、不要一律給正面評價。
+只輸出 JSON：{"volume":"偏小/適中/宏亮 + 3–8字說明","pace":"偏慢/適中/偏快 + 說明","intonation":"單調/自然起伏/生動強調 + 說明","fluency":"流暢/偶有卡頓/常卡頓，贅詞（呃、那個、然後）多寡","confidence":"緊張/普通/穩健 + 說明","voices":"只有主講者 / 有其他人發言（誰、約幾成）","note":"這段最值得講評的一個聲音表現，一句"}`;
+  for(let attempt=0;attempt<2;attempt++){
+    try{
+      const r=await fetch('https://api.openai.com/v1/chat/completions',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+cfg.key},
+        body:JSON.stringify({model:cfg.mAudio,modalities:['text'],messages:[{role:'user',content:[{type:'text',text:prompt},{type:'input_audio',input_audio:{data:await blobToB64(ch.blob),format:'wav'}}]}]})});
+      const j=await r.json(); if(!r.ok) throw new Error(j.error?.message||r.status);
+      ch.voice=parseLooseJSON(j.choices[0].message.content); onUpdate(); return;
+    }catch(e){ch.voiceErr=e.message; await new Promise(r=>setTimeout(r,1500))}
+  }
+  ch.voice=null; onUpdate();
+}
+const cjkCount=t=>(String(t||'').match(/[一-鿿]/g)||[]).length+(String(t||'').match(/[A-Za-z]+/g)||[]).length;
+function chunkRate(c){const d=c.end-c.start;return c.text&&d>5?Math.round(cjkCount(c.text)/d*60):null}
+function acLine(c){const a=c.ac||{};const r=chunkRate(c);return [a.level!=null?`音量 ${a.level} dBFS`:null,a.speech!=null?`有聲 ${a.speech}%`:null,a.pause!=null?`最長停頓 ${a.pause}s`:null,a.f0sd!=null?`音高變化 ±${a.f0sd} 半音`:null,r!=null?`語速 ${r} 字/分`:null].filter(Boolean).join('｜')}
 const GLOSSARY='繁體中文。到院前小兒救命術 PHPLS 指導員示範教學。詞彙：PAT、小兒評估三角、XABCDE、骨針 IO、脛骨近端、脛骨粗隆、腔室症候群、外滲、胸肋凹、鼻翼搧動、囟門、會厭、CPR、AED、BVM、E-C 手法、SGA、i-gel、IM、塞劑、MDI、spacer、epinephrine、amiodarone、midazolam、Voren、TRM、MR. SOPA、NRP、PALS、PBLS、Broselow、TEN-4、IMIST、ISBAR、Debrief、4D 教學、壓吹比 15:2、30:2、J/kg、mg/kg、mL/kg、安妮。';
 async function transcribeChunk(ch,onUpdate){
   for(let attempt=0;attempt<3;attempt++){
@@ -330,13 +387,14 @@ async function transcribeChunk(ch,onUpdate){
 }
 function transcriptLines(sess){
   const items=[];
-  sess.chunks.forEach(c=>items.push({t:c.start,html:c.text==null?`<span class="pending">${c.err?'重試中…':'轉錄中…'}</span>`:esc(c.text||'（無語音）'),txt:c.text||''}));
+  sess.chunks.forEach(c=>items.push({t:c.start,c,html:c.text==null?`<span class="pending">${c.err?'重試中…':'轉錄中…'}</span>`:esc(c.text||'（無語音）'),txt:c.text||''}));
   sess.marks.forEach(m=>items.push({t:m.t,mark:1,html:`<span class="m">【評分者標記】${esc(m.label)}</span>`,txt:'【評分者現場標記】'+m.label}));
   return items.sort((a,b)=>a.t-b.t||(a.mark?1:-1));
 }
 
 /* ================= 評分 ================= */
-const SCHEMA={type:'object',additionalProperties:false,required:['items','content_issues','practical_pearls','phases','teacher_talk_share','feedback','caveat'],properties:{
+const SCHEMA={type:'object',additionalProperties:false,required:['items','voice','content_issues','practical_pearls','phases','teacher_talk_share','feedback','caveat'],properties:{
+  voice:{type:'object',additionalProperties:false,required:['volume','pace','intonation','fluency','confidence','overall'],description:'口語聲音表現總評，每欄一句，要引用數據或時間點',properties:{volume:{type:'string'},pace:{type:'string'},intonation:{type:'string'},fluency:{type:'string'},confidence:{type:'string'},overall:{type:'string'}}},
   items:{type:'array',minItems:4,maxItems:4,items:{type:'object',additionalProperties:false,required:['key','score','phrase','reason','evidence'],properties:{
     key:{type:'string',enum:['content','interaction','method','delivery']},
     score:{type:'integer',enum:[1,2,3]},
@@ -360,7 +418,7 @@ function buildPrompt(sess){
   const st=STATIONS.find(s=>s.id===sess.station), p=st.parts[sess.part];
   const ts=timeScore(sess.dur);
   const lines=transcriptLines(sess).map(i=>`[${fmt(i.t)}] ${i.txt}`).join('\n');
-  const sys=`你是台灣急診醫學會暨台灣緊急救護醫療指導醫師學會 PHPLS 聯合工作小組的資深評分指導醫師，正在評「PHPLS 指導員課程」學員的 7 分鐘示範教學。你手上只有錄音逐字稿（每 30 秒一段、時間戳是該段起點、自動語音轉錄可能有錯字）。
+  const sys=`你是台灣急診醫學會暨台灣緊急救護醫療指導醫師學會 PHPLS 聯合工作小組的資深評分指導醫師，正在評「PHPLS 指導員課程」學員的 7 分鐘示範教學。你手上有三種資料：(1) 錄音逐字稿（每 30 秒一段、時間戳是該段起點、自動語音轉錄可能有錯字）；(2) 每 30 秒的客觀聲學數據（程式量測）；(3) 每 30 秒由聲音模型實際「聽」錄音後寫的聲音描述（語調、語速、流暢、自信、有沒有其他人聲）。
 
 評分標準（每項 1–3 分，建議起始分 2 分，滿分 15）：
 ${RUBRIC}
@@ -371,10 +429,14 @@ ${RUBRIC}
 - ① 內容：對照本段的教材重點與 2025 AHA；3 分門檻是「時間內補充教材外的實務知識或技巧」（例如現場經驗、常見錯誤、器材眉角）。
 - ② 互動：看有沒有提問、點學員回答、讓學員上來做、請學員互評；只問「懂嗎？」「有沒有問題？」不算真互動。
 - ③ 方法：技術站看 4D（Describe→Demo→Do→Debrief）是否完整、有沒有讓學員動手與當場修正；情境站看設定→推進（暫停引導）→Debrief（感受→分析→原則）→收尾；大堂看是否只是照念投影片，還是有提問、舉例、類比、實物。
-- ④ 口語、儀態與器材：錄音只能判斷口齒清晰、語速、贅詞、條理，以及口語中提到的器材操作；看不到的儀態與器材就不要據以加減分，並在 caveat 提醒評分者自行確認。
+- ④ 口語、儀態與器材：這一項要把聲音資料納入——口齒與音量、語速、語調起伏（是否單調照念、重點有無加重）、流暢與贅詞、台風穩不穩（聲音是否緊張、猶豫）。看不到的儀態與器材就不要據以加減分，並在 caveat 提醒評分者自行確認。
+- 聲學數據怎麼讀：音高變化（半音標準差）<2.5 偏單調、2.5–4.5 自然、>4.5 抑揚明顯；語速（含停頓的每分鐘字數）約 180–270 字/分屬適中，>300 偏快，<150 偏慢或停頓多；最長停頓 >5 秒代表明顯中斷（可能是學員操作中，要對照逐字稿）；音量 dBFS 受手機與講者距離影響，只看整場趨勢（例如後段明顯變小）與極小值（< -45 dBFS 可能聽不清），不要以絕對值論斷。
+- 聲音模型的描述可能過度解讀或客套；與聲學數據或逐字稿矛盾時，以聲學數據與逐字稿為準。是否有學員發言，要逐字稿與聲音描述都支持才算。
+- ② 互動可參考聲音描述裡「有其他人發言」的段落與比例。
 - ③ 方法中「有沒有實際示範、讓學員動手」請從口語線索判斷（例如「大家看我的手」「請你上來做一次」），不確定時在 caveat 註明。
 - evidence 的 quote 直接摘逐字稿原句（≤30 字），t 用逐字稿的時間戳（m:ss）。
 - phrase 要像評分單範例那樣精簡具體，例如「情境合理、抓得到 Critical error」「只問同一位學員」「有暫停引導與自評」「聲音偏小」。
+- voice 欄位是口語聲音表現的總評，要具體引用數據或時間點（例如「3:00 後語速升到 320 字/分」）。
 - feedback 是給評分者在接下來 2 分鐘講評時直接念的：優點與建議都要具體到行為（做了什麼、造成什麼、下次怎麼調），不要說「很棒」。
 - 全部用繁體中文、台灣用語。`;
   const user=`【站別】${st.name}
@@ -385,7 +447,10 @@ ${p[1]?'【本段教材重點】'+p[1]:''}
 【碼表時間】${fmt(sess.dur)} → ⑤ 時間控制 ${ts} 分（已定）
 
 【逐字稿】
-${lines||'（無）'}`;
+${lines||'（無）'}
+
+【每 30 秒聲音分析】
+${sess.chunks.map(c=>`[${fmt(c.start)}–${fmt(c.end)}] ${acLine(c)||'（無數據）'}${c.voice?`\n  聆聽：音量 ${c.voice.volume}；語速 ${c.voice.pace}；語調 ${c.voice.intonation}；流暢 ${c.voice.fluency}；自信 ${c.voice.confidence}；人聲 ${c.voice.voices}；${c.voice.note}`:''}`).join('\n')||'（無）'}`;
   return {sys,user,ts};
 }
 
@@ -466,14 +531,18 @@ function makePanel(letter){
     if(!S.curLen) return;
     if(final&&S.curLen<SR*0.8){S.cur=[];S.curLen=0;return}
     const idx=S.chunks.length, start=(S.total-S.curLen)/SR;
-    const ch={idx,start,end:S.total/SR,text:null,err:null,blob:wavBlob(S.cur,S.curLen),prev:S.chunks[idx-1]||null};
+    const x=new Float32Array(S.curLen); let o=0; for(const a of S.cur){x.set(a,o);o+=a.length}
+    let pk=0; for(let i=0;i<x.length;i++){const v=Math.abs(x[i]);if(v>pk)pk=v}
+    const g=pk>1e-4?Math.min(20,0.89/pk):1; const xn=g===1?x:x.map(v=>v*g); // 送 AI 前做峰值正規化；音量指標用原始訊號
+    const ch={idx,start,end:S.total/SR,text:null,err:null,blob:wavBlob([xn],xn.length),prev:S.chunks[idx-1]||null,ac:acoustics(x)};
     S.chunks.push(ch); S.cur=[]; S.curLen=0;
-    ch.p=transcribeChunk(ch,()=>{if(P.S===S)renderTx()}); renderTx();
+    const upd=()=>{if(P.S===S)renderTx()};
+    ch.p=Promise.all([transcribeChunk(ch,upd),listenChunk(ch,upd)]); renderTx();
   }
   function renderTx(){
     const S=P.S; if(!S) return;
     const items=transcriptLines(S), box=q('.q-live');
-    box.innerHTML=items.length?items.map(i=>`<p><span class="t">${fmt(i.t)}</span>${i.html}</p>`).join(''):'<p class="pending">錄音中，第一段逐字稿將於 0:30 出現…</p>';
+    box.innerHTML=items.length?items.map(i=>`<p><span class="t">${fmt(i.t)}</span>${i.html}${i.c?`<br><span class="vm">🔊 ${esc(acLine(i.c))}${i.c.voice?'｜👂 '+esc([i.c.voice.intonation,i.c.voice.pace].join('、')):cfg.mAudio?'｜👂 聆聽中…':''}</span>`:''}</p>`).join(''):'<p class="pending">錄音中，第一段逐字稿將於 0:30 出現…</p>';
     box.scrollTop=box.scrollHeight;
   }
   function lockInputs(on){['.q-part','.q-student','.q-file'].forEach(s=>q(s).disabled=on)}
@@ -483,7 +552,7 @@ function makePanel(letter){
     if(other()&&other().isRecording()){toast(`評分台 ${other().letter} 還在錄音，請先停止`);return}
     if(P.busy){toast('這一台還在產生評分，請用另一台');return}
     if(P.pendingRec&&!P.pendingRec.saved&&!confirm(`評分台 ${letter} 的 ${P.pendingRec.sid} 評分還沒儲存，要捨棄並錄下一位嗎？`)) return;
-    try{stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false,noiseSuppression:true,autoGainControl:true,channelCount:1}})}
+    try{stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false,noiseSuppression:true,autoGainControl:false,channelCount:1}})}
     catch(e){toast('無法使用麥克風：'+e.message,4000);return}
     P.pendingRec=null; q('.q-result').classList.add('hidden'); q('.q-prog').classList.add('hidden');
     const S=P.S=newSession();
@@ -566,10 +635,10 @@ function makePanel(letter){
     P.busy=true; const T0=performance.now();
     setState(`評分中｜${S.sid} ${S.name}`,'busy');
     q('.q-prog').classList.remove('hidden'); q('.q-prog .steps').innerHTML='';
-    step('tx',`等待逐字稿（${S.chunks.length} 段）`,'run');
+    step('tx',`等待逐字稿${cfg.mAudio?'與聲音聆聽':''}（${S.chunks.length} 段）`,'run');
     await Promise.all(S.chunks.map(c=>c.p));
     const failed=S.chunks.filter(c=>!c.text&&c.err).length;
-    step('tx',`逐字稿完成（${S.chunks.length} 段${failed?`，${failed} 段失敗`:''}）`,failed?'err':'done');
+    step('tx',`逐字稿完成（${S.chunks.length} 段${failed?`，${failed} 段失敗`:''}）${cfg.mAudio?`；聲音聆聽 ${S.chunks.filter(c=>c.voice).length}/${S.chunks.length} 段`:''}`,failed?'err':'done');
     const {sys,user,ts}=buildPrompt(S);
     step('ai','AI 對照評分單評分中…','run');
     let out;
@@ -592,7 +661,8 @@ function makePanel(letter){
     step('ai',`評分完成（停止錄音後 ${Math.round((performance.now()-T0)/1000)} 秒）`,'done');
     const rec={id:S.id, ts:new Date().toISOString(), station:S.station, part:S.part, sid:S.sid, name:S.name, rater:cfg.rater,
       dur:Math.round(S.dur), ai:out, scores:Object.fromEntries(out.items.map(i=>[i.key,i.score])), time:ts,
-      transcript:transcriptLines(S).map(i=>`[${fmt(i.t)}] ${i.txt}`).join('\n'), saved:false};
+      transcript:transcriptLines(S).map(i=>`[${fmt(i.t)}] ${i.txt}`).join('\n'), saved:false,
+      voiceSeg:S.chunks.map(c=>({start:c.start,end:c.end,line:acLine(c),ac:c.ac,rate:chunkRate(c),voice:c.voice||null}))};
     rec.comment=composeComment(rec);
     toast(`評分台 ${letter}：${S.sid} 評分完成`);
     P.showResult(rec,S);
@@ -633,6 +703,12 @@ function makePanel(letter){
       <h5>帶得走的一句</h5><div>${esc(rec.ai.feedback.takeaway)}</div>
       <h5>可以先問他</h5><div>${esc(rec.ai.feedback.debrief_question)}</div>
     </div>
+    ${rec.ai.voice?`<div class="card fb"><div class="kicker">聲音表現（多模態）</div>
+      <h5>語調</h5><div>${esc(rec.ai.voice.intonation)}</div><h5>語速</h5><div>${esc(rec.ai.voice.pace)}</div>
+      <h5>音量</h5><div>${esc(rec.ai.voice.volume)}</div><h5>流暢</h5><div>${esc(rec.ai.voice.fluency)}</div>
+      <h5>自信與台風</h5><div>${esc(rec.ai.voice.confidence)}</div><h5>總結</h5><div>${esc(rec.ai.voice.overall)}</div>
+      ${rec.voiceSeg?.length?`<details style="margin-top:8px"><summary class="hint">每 30 秒數據</summary><div style="overflow-x:auto"><table class="vt"><tr><th>時間</th><th>dBFS</th><th>有聲</th><th>停頓</th><th>音高±</th><th>字/分</th><th>聆聽</th></tr>${rec.voiceSeg.map(v=>`<tr><td><span class="t" data-t="${fmt(v.start)}">${fmt(v.start)}</span></td><td>${v.ac?.level??''}</td><td>${v.ac?.speech??''}%</td><td>${v.ac?.pause??''}s</td><td>${v.ac?.f0sd??''}</td><td>${v.rate??''}</td><td>${v.voice?esc(v.voice.intonation+'；'+v.voice.pace+'；'+v.voice.voices):''}</td></tr>`).join('')}</table></div></details>`:''}
+    </div>`:''}
     ${rec.ai.content_issues.length?`<div class="card"><div class="kicker">內容需要確認</div>${rec.ai.content_issues.map(c=>`<div class="issue">${tLink(c.t)} <b>${esc(c.severity)}</b>：「${esc(c.said)}」→ ${esc(c.correct)}</div>`).join('')}</div>`:''}
     ${rec.ai.practical_pearls.length?`<div class="card"><div class="kicker">教材外的實務補充（① 3 分證據）</div>${rec.ai.practical_pearls.map(s=>`<div class="pearl">${esc(s)}</div>`).join('')}</div>`:''}
     <div class="card">
