@@ -99,6 +99,8 @@ td.n{text-align:center;font-family:ui-monospace,Menlo,monospace}
 .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--ink);color:#fff;padding:9px 16px;border-radius:10px;font-size:14px;z-index:20;opacity:0;transition:opacity .2s;pointer-events:none}
 .toast.on{opacity:.95}
 audio{width:100%;margin-top:8px}
+.synced{font-size:13px;color:var(--mute);background:#fff;border:1px solid var(--line);border-radius:999px;padding:5px 12px;cursor:pointer}
+.synced.ok{color:var(--ok);border-color:#bfe3cf}.synced.err{color:var(--bad);border-color:#f0c4ca}.synced.run{color:var(--gold)}
 .pill{display:inline-block;font-size:12px;border-radius:999px;padding:1px 8px;background:#f6e9e7;color:var(--red-d);margin-left:4px}
 </style>
 </head>
@@ -118,6 +120,7 @@ audio{width:100%;margin-top:8px}
   <div class="card topbar">
     <div style="flex:1;min-width:0"><label class="f" style="margin-top:0">站別（兩台共用）</label><select id="station"></select></div>
     <div id="keyWarn" class="hint hidden" style="color:var(--bad)">尚未設定 OpenAI API key → 按右上「設定」</div>
+    <button class="synced" id="syncState" title="點一下立即與雲端同步">☁ 尚未同步</button>
   </div>
   <div class="panels" id="panels"></div>
 </section>
@@ -160,7 +163,8 @@ audio{width:100%;margin-top:8px}
   <div class="card">
     <div class="kicker">把這台的設定搬到另一台裝置</div>
     <div class="hint">產生一個一次性連結，內含 API key 與學員名單（放在網址 # 之後，不會送到伺服器）。在新裝置用相機掃或點連結，就完成設定。</div>
-    <div class="row" style="margin-top:8px"><button class="btn sec" id="qrBtn">顯示一鍵設定 QR</button></div>
+    <div class="row" style="margin-top:8px"><button class="btn sec" id="qrBtn">顯示一鍵設定 QR</button><button class="btn sec" id="syncBtn">立即與雲端同步</button></div>
+    <div class="hint" style="margin-top:6px">雲端同步會把評分紀錄與學員名單存成你 OpenAI 帳號裡的一個檔案（檔名 phpls-eval-sync.jsonl），同一把 key 的裝置都會自動合併。錄音不會上傳。</div>
     <div id="qrBox" class="hidden" style="text-align:center;margin-top:10px">
       <div id="qrImg" style="display:inline-block;background:#fff;padding:10px;border-radius:10px"></div>
       <div class="row" style="margin-top:8px"><button class="btn sec" id="qrCopy">複製連結</button><button class="btn sec" id="qrHide">收起</button></div>
@@ -741,7 +745,7 @@ function makePanel(letter){
       out=JSON.parse(j.choices[0].message.content);
     }catch(e){
       P.busy=false; setState(`評分失敗｜${S.sid}`,'busy');
-      step('ai','評分失敗：'+(e.name==='AbortError'?'逾時':e.message),'err');
+      step('ai','評分失敗：'+(e.name==='AbortError'?'逾時':netMsg(e.message)),'err');
       const b=document.createElement('button');b.className='btn';b.textContent='重新評分';b.style.marginTop='8px';b.onclick=()=>{b.remove();runScoring(S)};q('.q-prog .steps').appendChild(b);
       return;
     }
@@ -764,7 +768,8 @@ function makePanel(letter){
     q('.q-save').onclick=()=>{
       rec.comment=q('.q-comment').value; rec.saved=true;
       const i=records.findIndex(r=>r.id===rec.id); if(i>=0) records[i]=rec; else records.push(rec);
-      LS.set('records',records); toast(`已儲存 ${rec.sid}｜${total(rec)} 分`);
+      rec.updatedAt=Date.now();
+      LS.set('records',records); toast(`已儲存 ${rec.sid}｜${total(rec)} 分`); syncSoon();
       P.reset(); PANELS.forEach(p=>p.refreshSelectors()); renderHist();
     };
   };
@@ -780,6 +785,58 @@ function makePanel(letter){
   PANELS.push(P); return P;
 }
 window.addEventListener('beforeunload',e=>{if(PANELS.some(p=>p.isRecording()||p.busy||(p.pendingRec&&!p.pendingRec.saved))){e.preventDefault();e.returnValue=''}});
+
+/* ================= 雲端同步（用同一把 OpenAI key，把紀錄存成帳號裡的檔案） ================= */
+const SYNC_NAME='phpls-eval-sync.jsonl';
+let syncing=false, syncTimer=null;
+async function oa(path,opt={}){
+  const r=await fetch('https://api.openai.com/v1'+path,{...opt,headers:{Authorization:'Bearer '+cfg.key,...(opt.headers||{})}});
+  if(!r.ok){let m='HTTP '+r.status;try{m=(await r.json()).error?.message||m}catch(e){}throw new Error(m)}
+  return r;
+}
+const netMsg=m=>/Failed to fetch|NetworkError|Load failed/i.test(m)?'無法連線（API key 可能不正確，或沒有網路）':m;
+function syncStatus(txt,cls){const e=$('#syncState');if(e){e.textContent=txt;e.className='synced '+(cls||'')}}
+function mergeRecords(local,remote){
+  const by=new Map();
+  for(const r of [...remote,...local]){
+    const prev=by.get(r.id);
+    if(!prev||(r.updatedAt||Date.parse(r.ts)||0)>=(prev.updatedAt||Date.parse(prev.ts)||0)) by.set(r.id,r);
+  }
+  return [...by.values()].sort((a,b)=>(a.station+a.sid).localeCompare(b.station+b.sid,'en',{numeric:true}));
+}
+async function syncNow(silent){
+  if(!cfg.key){if(!silent)toast('請先設定 API key');return}
+  if(syncing){if(!silent)toast('同步進行中…');return} syncing=true; syncStatus('☁ 同步中…','run');
+  try{
+    const list=(await (await oa('/files?purpose=fine-tune&limit=100')).json()).data
+      .filter(f=>f.filename===SYNC_NAME).sort((a,b)=>b.created_at-a.created_at);
+    let remote={records:[],roster:{}};
+    if(list[0]){
+      try{remote=JSON.parse(await (await oa('/files/'+list[0].id+'/content')).text())}catch(e){console.warn('雲端檔解析失敗',e)}
+    }
+    const before=JSON.stringify(records);
+    records=mergeRecords(records,remote.records||[]);
+    roster=Object.assign({},remote.roster||{},roster);
+    const changed=JSON.stringify(records)!==before;
+    if(changed){LS.set('records',records);LS.set('roster',roster);renderHist();PANELS.forEach(p=>p.refreshSelectors())}
+    const payload=JSON.stringify({v:1,updated:Date.now(),device:navigator.userAgent.slice(0,60),records,roster});
+    const remoteSame=list[0]&&JSON.stringify(remote.records||[])===JSON.stringify(records)&&JSON.stringify(remote.roster||{})===JSON.stringify(roster);
+    if(!remoteSame){
+      const fd=new FormData(); fd.append('purpose','fine-tune');
+      fd.append('file',new Blob([payload],{type:'application/jsonl'}),SYNC_NAME);
+      await oa('/files',{method:'POST',body:fd});
+      for(const f of list.slice(1)) oa('/files/'+f.id,{method:'DELETE'}).catch(()=>{}); // 只留上一版當備份
+    }
+    cfg.lastSync=Date.now(); LS.set('cfg',cfg);
+    syncStatus(`☁ 已同步 ${new Date().toLocaleTimeString('zh-TW',{hour:'2-digit',minute:'2-digit'})}（${records.length} 筆）`,'ok');
+    if(!silent) toast(changed?'已與雲端合併':'雲端已是最新');
+  }catch(e){
+    syncStatus('☁ 同步失敗：'+netMsg(e.message),'err');
+    if(!silent) toast('同步失敗：'+netMsg(e.message),4000);
+  }finally{syncing=false}
+}
+function syncSoon(){clearTimeout(syncTimer);syncTimer=setTimeout(()=>syncNow(true),4000)}
+document.addEventListener('visibilitychange',()=>{if(!document.hidden&&cfg.key&&Date.now()-(cfg.lastSync||0)>60000)syncNow(true)});
 
 /* ================= 紀錄 ================= */
 function renderHist(sync){
@@ -803,8 +860,9 @@ function openHistDetail(orig){
   $('#histBack').onclick=closeHistDetail;
   inner.querySelector('.q-save').onclick=()=>{
     rec.comment=inner.querySelector('.q-comment').value;
+    rec.updatedAt=Date.now();
     const i=records.findIndex(r=>r.id===rec.id); if(i>=0) records[i]=rec;
-    LS.set('records',records); toast(`已更新 ${rec.sid}｜${total(rec)} 分`); closeHistDetail(); PANELS.forEach(p=>p.refreshSelectors());
+    LS.set('records',records); toast(`已更新 ${rec.sid}｜${total(rec)} 分`); syncSoon(); closeHistDetail(); PANELS.forEach(p=>p.refreshSelectors());
   };
   window.scrollTo({top:0});
 }
@@ -819,6 +877,9 @@ $('#csvBtn').onclick=()=>{
 
 makePanel('A'); makePanel('B');
 fillStations(); showTab('rec');
+$('#syncState').onclick=()=>syncNow(false);
+$('#syncBtn').onclick=()=>syncNow(false);
+if(cfg.key) syncNow(true);
 </script>
 </body>
 </html>
