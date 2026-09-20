@@ -157,6 +157,16 @@ audio{width:100%;margin-top:8px}
     <div class="hint">一行一位：「編號 姓名」，例如 <code>C6 黃晏博</code>。名單只存在本機。</div>
     <textarea id="rosterIn" style="min-height:160px"></textarea>
   </div>
+  <div class="card">
+    <div class="kicker">把這台的設定搬到另一台裝置</div>
+    <div class="hint">產生一個一次性連結，內含 API key 與學員名單（放在網址 # 之後，不會送到伺服器）。在新裝置用相機掃或點連結，就完成設定。</div>
+    <div class="row" style="margin-top:8px"><button class="btn sec" id="qrBtn">顯示一鍵設定 QR</button></div>
+    <div id="qrBox" class="hidden" style="text-align:center;margin-top:10px">
+      <div id="qrImg" style="display:inline-block;background:#fff;padding:10px;border-radius:10px"></div>
+      <div class="row" style="margin-top:8px"><button class="btn sec" id="qrCopy">複製連結</button><button class="btn sec" id="qrHide">收起</button></div>
+      <p class="hint" style="color:var(--bad)">⚠ 這個 QR／連結等同你的 API key，請不要投影、截圖外傳或給別人掃。</p>
+    </div>
+  </div>
   <div class="row"><button class="btn" id="saveSet">儲存設定</button><button class="btn sec" id="closeSet">返回</button></div>
 </section>
 </main>
@@ -293,6 +303,23 @@ $('#setBtn').onclick=()=>{
   showTab('set');
 };
 $('#closeSet').onclick=()=>showTab('rec');
+const b64u=str=>btoa(unescape(encodeURIComponent(str))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+function setupURL(){
+  const u=location.origin+location.pathname+'#roster='+b64u(JSON.stringify(roster))+'&k='+b64u(cfg.key);
+  return u;
+}
+$('#qrBtn').onclick=async()=>{
+  if(!cfg.key){toast('這台還沒有 API key');return}
+  const url=setupURL();
+  $('#qrBox').classList.remove('hidden'); $('#qrImg').innerHTML='<span class="hint">產生中…</span>';
+  try{
+    if(!window.QRCode) await new Promise((res,rej)=>{const sc=document.createElement('script');sc.src='https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js';sc.onload=res;sc.onerror=rej;document.head.appendChild(sc)});
+    $('#qrImg').innerHTML='';
+    new QRCode($('#qrImg'),{text:url,width:280,height:280,correctLevel:QRCode.CorrectLevel.L});
+  }catch(e){$('#qrImg').innerHTML='<span class="hint">無法載入 QR 元件（需連網），請改用「複製連結」</span>'}
+};
+$('#qrCopy').onclick=()=>copy(setupURL());
+$('#qrHide').onclick=()=>{$('#qrBox').classList.add('hidden');$('#qrImg').innerHTML=''};
 $('#saveSet').onclick=()=>{
   cfg={key:$('#apiKey').value.trim(),mTx:$('#mTx').value.trim()||'gpt-4o-transcribe',mScore:$('#mScore').value.trim()||'gpt-5.4',mAudio:$('#mAudio').value.trim(),rater:$('#rater').value.trim(),beep:$('#beep').checked};
   LS.set('cfg',cfg);
